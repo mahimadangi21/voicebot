@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv/
+venv/
+
+# Project output / database / sessions
+audio_output/
+sessions.json
+conversation_history.json
+
+# Frontend build & modules
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# IDEs
+.vscode/
+.idea/
+.gemini/
