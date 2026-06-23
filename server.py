@@ -157,8 +157,20 @@ def tts_only():
 def audio(filename):
     return send_from_directory(AUDIO_DIR, filename)
 
+# Serve Vite Frontend static assets
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_frontend(path):
+    dist_dir = os.path.abspath("frontend/dist")
+    if path != "" and os.path.exists(os.path.join(dist_dir, path)):
+        return send_from_directory(dist_dir, path)
+    else:
+        return send_from_directory(dist_dir, "index.html")
+
 if __name__ == "__main__":
     os.makedirs(AUDIO_DIR, exist_ok=True)
     load_sessions()
-    print("Starting Hindi Voice Bot Flask server on port 5000...")
-    app.run(port=5000, debug=True, use_reloader=False)
+    port = int(os.environ.get("PORT", 5000))
+    print(f"Starting Hindi Voice Bot Flask server on port {port}...")
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+

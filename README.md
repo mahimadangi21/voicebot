@@ -1,3 +1,12 @@
+---
+title: Voicebot
+emoji: 🎙️
+colorFrom: indigo
+colorTo: blue
+sdk: docker
+pinned: false
+---
+
 # Hindi Voice Bot — POC
 
 A proof-of-concept conversational voice bot that calls a customer about a due amount, speaks Hinglish naturally, and reacts to free-form replies — built entirely with **free tools**.
