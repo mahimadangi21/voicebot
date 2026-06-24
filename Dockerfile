@@ -17,5 +17,7 @@ COPY . .
 # Expose port (HF Spaces defaults to 7860)
 EXPOSE 7860
 
+ENV PORT=7860
+
 # Run the FastAPI server
 CMD ["python", "server.py"]

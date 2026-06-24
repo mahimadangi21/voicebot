@@ -364,6 +364,8 @@ def serve_frontend(path: str):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 5000))
+    # Default to 7860 on Hugging Face Spaces or inside Docker container, otherwise use 5000 locally
+    default_port = 7860 if "SPACE_ID" in os.environ or os.path.exists("/.dockerenv") else 5000
+    port = int(os.environ.get("PORT", default_port))
     print(f"Starting Hindi Voice Bot FastAPI server on port {port}...")
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
