@@ -113,7 +113,7 @@ def _save_history(session_id: str, ctx: CallContext):
     history = []
     if HISTORY_FILE.exists():
         try:
-            history = json.loads(HISTORY_FILE.read_text())
+            history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
         except Exception:
             history = []
 
@@ -128,7 +128,7 @@ def _save_history(session_id: str, ctx: CallContext):
         "transcript": ctx.transcript,
     }
     history.append(entry)
-    HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2))
+    HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -268,7 +268,7 @@ def get_history():
     if not HISTORY_FILE.exists():
         return {"history": []}
     try:
-        history = json.loads(HISTORY_FILE.read_text())
+        history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
         return {"history": history}
     except Exception:
         return {"history": []}
@@ -277,9 +277,9 @@ def get_history():
 def delete_history(session_id: str):
     if not HISTORY_FILE.exists():
         raise HTTPException(status_code=404, detail="No history found")
-    history = json.loads(HISTORY_FILE.read_text())
+    history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
     history = [h for h in history if h.get("session_id") != session_id]
-    HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2))
+    HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"deleted": session_id}
 
 # Test routes calling engine logic directly
