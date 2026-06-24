@@ -60,6 +60,7 @@ class Intent(Enum):
     MAYBE = "maybe"               # dekhta hoon, sochunga
     GOODBYE = "goodbye"           # thank you, bye, good night
     UNCLEAR = "unclear"
+    AUDIO_CHECK = "audio_check"  # "awaaz nahi aa rahi", "hello hello", "can you hear me"
 
 
 # Keyword sets kept simple & explicit on purpose -- easy to extend,
@@ -114,7 +115,27 @@ BANK_QUESTION_PATTERNS = [
 
 WRONG_PERSON_PATTERNS = [
     r"\bwrong\b",
+    r"\brong\b",
     r"\bgalat\b",
+    r"\bwrong\s*number\b",
+    r"\brong\s*number\b",
+    r"\bgalat\s*number\b",
+    r"\bgalat\s*insaan\b",
+    r"\bgalat\s*banda\b",
+    r"\bgalat\s*bande\b",
+    r"\bgalat\s*person\b",
+    r"गलत\s*नंबर",
+    r"गलत\s*नम्बर",
+    r"रॉन्ग\s*नंबर",
+    r"रॉन्ग\s*नम्बर",
+    r"रोंग\s*नंबर",
+    r"रोंग\s*नम्बर",
+    r"रॉन्ग",
+    r"रोंग",
+    r"गलत\s*नम्बर",
+    r"गलत\s*इंसान",
+    r"गलत\s*बंदा",
+    r"गलत\s*बंदे",
     r"\byeh\s+jitesh\s+nah?i\s+hai\b",
     r"\bmain\s+unka\s+bhai\b",
     r"\bmain\s+unka\s+friend\b",
@@ -423,7 +444,34 @@ NOISE_PATTERNS = [
     r"^\[noise\]$",
     r"^uh+$",
     r"^ah+$",
-    r"^ह+म्+$"
+    r"^\u0939+\u092e\u094d+$"
+]
+
+# AUDIO_CHECK: customer is signalling audio is unclear or asking if they can be heard
+# This is ACTIVE ENGAGEMENT — must not be treated as silence or unclear intent.
+# Resets unclear_retries and triggers identity re-confirmation response.
+AUDIO_CHECK_PATTERNS = [
+    r"\bawaaz\s*nahi\b",
+    r"\baawaz\s*nahi\b",
+    r"\bsunaai\s*nahi\b",
+    r"\bsunai\s*nahi\b",
+    r"\bsuna\s*nahi\b",
+    r"\bkya\s+meri\s+awaaz\b",
+    r"\bkya\s+aap\s+sun\b",
+    r"\bhello\s+hello\b",
+    r"\bkya\s+sun\s+pa\b",
+    r"\bcan\s+you\s+hear\b",
+    r"\bhear\s+me\b",
+    r"\baudio\s+theek\b",
+    r"\baudio\s+clear\b",
+    # Devanagari
+    r"\u0906\u0935\u093e\u091c\u093c?\s*\u0928\u0939\u0940\u0902",
+    r"\u0938\u0941\u0928\u093e\u0908\s*\u0928\u0939\u0940\u0902",
+    r"\u0938\u0941\u0928\u093e\s*\u0928\u0939\u0940\u0902",
+    r"\u0915\u094d\u092f\u093e\s*\u092e\u0947\u0930\u0940\s*\u0906\u0935\u093e\u091c\u093c?",
+    r"\u0915\u094d\u092f\u093e\s*\u0906\u092a\s*\u0938\u0941\u0928",
+    r"\u0939\u0948\u0932\u094b\s*\u0939\u0948\u0932\u094b",
+    r"\u0939\u0947\u0932\u094b\s*\u0939\u0947\u0932\u094b"
 ]
 
 ASK_DUE_DATE_PATTERNS = [
@@ -558,6 +606,56 @@ UNCLEAR_PATTERNS = [
     r"क्या\s*कहा"
 ]
 
+def is_incomplete_thought(text: str) -> bool:
+    """
+    Checks if a customer utterance is incomplete (e.g. trailing conjunctions,
+    fillers, or ending without a clear verb or conclusion).
+    """
+    cleaned = text.strip().lower()
+    if not cleaned:
+        return False
+        
+    # 1. Trailing conjunctions/fillers/prepositions
+    # Split ASCII (using \b) and Devanagari (using (?:^|\s)) to avoid unicode word boundary issues
+    trailing_ascii = r"\b(lekin|agar|ya|aur|aaur|ki|kyunki|kyonki|yaar|but|if|because|so|then|or|and)\b\s*[.…]*$"
+    trailing_devanagari = r"(?:^|\s)(लेकिन|अगर|या|और|कि|क्योंकि|यार)\s*[.…]*$"
+    if re.search(trailing_ascii, cleaned) or re.search(trailing_devanagari, cleaned):
+        return True
+
+    # 2. Starts with a subordinate conjunction but doesn't end with a clear verb or completion indicator
+    subordinate_patterns = [
+        r"\b(agar|lekin|kyunki|kyonki|if|but|because)\b",
+        r"(?:^|\s)(अगर|लेकिन|क्योंकि)(?:\s|$)"
+    ]
+    if any(re.search(pat, cleaned) for pat in subordinate_patterns):
+        # Common final verbs/helpers/conclusions
+        concluding_patterns = [
+            r"\b(hai|hain|hoon|hu|ho|tha|thi|the|gaya|gaye|gayi|karo|do|de|bhejo|bhej|bola|bol|boliye|bataiye|rha|raha|rahi|rahe|karunga|karungi|pay|link|karna|karke|rakhta|rakhti|rakho|bye|ok|okay|dhanyavaad|shukriya|alvida)\b\s*[.…]*$",
+            r"(है|हैं|हूं|हु|हो|था|थी|थे|गया|गए|गयी|करो|दो|दे|भेजो|भेज|बोला|बोल|बोलिए|बताइए|रहा|रही|रहे|करूंगा|करूंगी|करना|रखता|रखती|रखो|धन्यवाद|शुक्रिया|बाय)\s*[.…]*$"
+        ]
+        # Also check common future/present verb suffixes (like -unga, -ungi, -ega, -egi, -enge, -ta, -te, -ti)
+        suffix_patterns = [
+            r"\w+(unga|ungi|ega|egi|enge|ta|te|ti)\b\s*[.…]*$"
+        ]
+        if not (any(re.search(pat, cleaned) for pat in concluding_patterns) or 
+                any(re.search(pat, cleaned) for pat in suffix_patterns)):
+            return True
+            
+    return False
+
+
+def detect_intent_with_confidence(user_text: str, customer_name: str = None) -> tuple[Intent, float]:
+    """
+    Detects the intent and returns a confidence score.
+    If the intent is UNCLEAR, confidence is 0.5. Otherwise, 1.0.
+    """
+    intent = detect_intent(user_text, customer_name)
+    if intent == Intent.UNCLEAR:
+        confidence = 0.5
+    else:
+        confidence = 1.0
+    return intent, confidence
+
 
 def detect_intent(user_text: str, customer_name: str = None) -> Intent:
     """
@@ -574,6 +672,12 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
     for pattern in NOISE_PATTERNS:
         if re.match(pattern, text):
             return Intent.NOISE
+
+    # 0c. Check AUDIO_CHECK — customer signalling audio is unclear / asking if heard
+    # Must be before UNCLEAR so it is not swallowed by the generic unclear bucket
+    for pattern in AUDIO_CHECK_PATTERNS:
+        if re.search(pattern, text):
+            return Intent.AUDIO_CHECK
 
     # 1. Check sensitive queries
     for pattern in ASK_SENSITIVE_PATTERNS:
@@ -652,7 +756,27 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
 
     wrong_person_patterns = [
         r"\bwrong\b",
+        r"\brong\b",
         r"\bgalat\b",
+        r"\bwrong\s*number\b",
+        r"\brong\s*number\b",
+        r"\bgalat\s*number\b",
+        r"\bgalat\s*insaan\b",
+        r"\bgalat\s*banda\b",
+        r"\bgalat\s*bande\b",
+        r"\bgalat\s*person\b",
+        r"गलत\s*नंबर",
+        r"गलत\s*नम्बर",
+        r"रॉन्ग\s*नंबर",
+        r"रॉन्ग\s*नम्बर",
+        r"रोंग\s*नंबर",
+        r"रोंग\s*नम्बर",
+        r"रॉन्ग",
+        r"रोंग",
+        r"गलत\s*नम्बर",
+        r"गलत\s*इंसान",
+        r"गलत\s*बंदा",
+        r"गलत\s*बंदे",
         rf"\byeh\s+{re.escape(first_name)}\s+nah?i\s+hai\b",
         r"\bmain\s+unka\s+bhai\b",
         r"\bmain\s+unka\s+friend\b",
@@ -788,7 +912,7 @@ class CallContext:
     bank_name: str = "ICICI"
     state: State = State.GREETING
     unclear_retries: int = 0
-    max_unclear_retries: int = 2
+    max_unclear_retries: int = 3  # 3 prompts ≈ 7-9 seconds of patience before ending
     transcript: list = field(default_factory=list)  # for logs / QA
     promise_date: str = ""  # For saving Category 7 payment promise details
     callback_time: str = ""  # For saving Category 12 callback details
@@ -877,7 +1001,7 @@ def bot_say(ctx: CallContext) -> str:
         else:
             text = "Theek hai, maine convenient time system mein note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!"
     elif ctx.state == State.CALL_ENDED_WRONG_NUMBER:
-        text = "Theek hai, main baad mein call karta hoon. Dhanyavaad."
+        text = line_wrong_number()
     elif ctx.state == State.CALL_ENDED_REFUSED:
         text = line_refused()
     elif ctx.state == State.CALL_ENDED_UNCLEAR:
@@ -912,7 +1036,10 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
     """
     ctx.log("USER", user_text)
 
-    intent = detect_intent(user_text, ctx.name)
+    if is_incomplete_thought(user_text) and not is_call_over(ctx):
+        return "[continue_listening]"
+
+    intent, confidence = detect_intent_with_confidence(user_text, ctx.name)
 
     # Global check for callbacks in non-terminal states
     if intent == Intent.CALLBACK and not is_call_over(ctx):
@@ -954,6 +1081,27 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
         ctx.state = State.CALL_ENDED_ESCALATED
         ctx.unclear_retries = 0
         return bot_say(ctx)
+
+    # Global check for WRONG_PERSON intent in non-terminal states
+    # Explicit wrong-number statements bypass retries entirely and terminate the call immediately
+    if intent == Intent.WRONG_PERSON and not is_call_over(ctx):
+        ctx.state = State.CALL_ENDED_WRONG_NUMBER
+        ctx.unclear_retries = 0
+        return bot_say(ctx)
+
+    # Global check for AUDIO_CHECK intent in non-terminal states
+    # Customer is signalling audio is unclear or asking if they can be heard.
+    # This is ACTIVE ENGAGEMENT — reset unclear counter, answer with identity +
+    # re-confirmation, and do NOT advance to end-call or unclear path.
+    if intent == Intent.AUDIO_CHECK and not is_call_over(ctx):
+        ctx.unclear_retries = 0  # Reset — this was a real response, not silence
+        text = (
+            f"Sorry for that, main {ctx.bank_name} Bank se bol raha hoon "
+            f"aapke pending loan ke baare mein. "
+            f"Kya ab meri awaaz aapko clearly aa rahi hai?"
+        )
+        ctx.log("BOT", text)
+        return text
 
     # Global check for silence in non-terminal states
     if intent == Intent.SILENCE and not is_call_over(ctx):
@@ -1028,6 +1176,10 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
         ctx.state = State.CALL_ENDED_POLITE
         ctx.unclear_retries = 0
         return bot_say(ctx)
+
+    # Rule 4: If confidence on intent classification is below 90%, do not advance state
+    if confidence < 0.9 and not is_call_over(ctx):
+        return _handle_unclear(ctx, ctx.state)
 
     # State machine logic
     if ctx.state == State.GREETING or ctx.state == State.GREETING_IDENTITY_ASKED:
@@ -1246,7 +1398,7 @@ def _handle_unclear(ctx: CallContext, retry_state: State) -> str:
     if ctx.unclear_retries > ctx.max_unclear_retries:
         ctx.state = State.CALL_ENDED_UNCLEAR
         return bot_say(ctx)
-    text = line_unclear_retry()
+    text = "Sorry, aapne kya kaha, dobara bata sakte hain?"
     ctx.log("BOT", text)
     return text
 

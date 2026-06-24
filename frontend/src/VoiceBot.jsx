@@ -29,7 +29,9 @@ import {
   Mic,
   MicOff,
   Sparkles,
-  HeartHandshake
+  HeartHandshake,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 const STATE_COLORS = {
@@ -111,7 +113,19 @@ const BANK_QUESTION_PATTERNS = [
 
 const WRONG_PERSON_PATTERNS = [
   /\bwrong\b/i,
+  /\brong\b/i,
   /\bgalat\b/i,
+  /\bwrong\s*number\b/i,
+  /\brong\s*number\b/i,
+  /\bgalat\s*number\b/i,
+  /\bgalat\s*insaan\b/i,
+  /\bgalat\s*banda\b/i,
+  /\bgalat\s*bande\b/i,
+  /\bgalat\s*person\b/i,
+  /गलत\s*नंबर/i,
+  /गलत\s*इंसान/i,
+  /गलत\s*बंदा/i,
+  /गलत\s*बंदे/i,
   /\byeh\s+jitesh\s+nah?i\s+hai/i,
   /\bmain\s+unka\s+bhai/i,
   /\bmain\s+unka\s+friend/i,
@@ -402,6 +416,32 @@ const NOISE_PATTERNS = [
   /^ह+म्+$/i
 ];
 
+// AUDIO_CHECK: customer is asking if they can be heard, or says audio is unclear
+// This is an ACTIVE response — treat as engagement, not silence/unclear
+const AUDIO_CHECK_PATTERNS = [
+  /\bawaaz\s*nahi\b/i,
+  /\baawaz\s*nahi\b/i,
+  /\bsunaai\s*nahi\b/i,
+  /\bsunai\s*nahi\b/i,
+  /\bsuna\s*nahi\b/i,
+  /\bkya\s+meri\s+awaaz\b/i,
+  /\bkya\s+aap\s+sun\b/i,
+  /\bhello\s+hello\b/i,
+  /\bhello\?\s*hello\b/i,
+  /\bkya\s+sun\s+pa\b/i,
+  /\bcan\s+you\s+hear\b/i,
+  /\bhear\s+me\b/i,
+  /\baudio\s+theek\b/i,
+  /\baudio\s+clear\b/i,
+  /आवाज़?\s*नहीं/i,
+  /सुनाई\s*नहीं/i,
+  /सुना\s*नहीं/i,
+  /क्या\s*मेरी\s*आवाज़?/i,
+  /क्या\s*आप\s*सुन/i,
+  /हैलो\s*हैलो/i,
+  /हेलो\s*हेलो/i
+];
+
 const ASK_DUE_DATE_PATTERNS = [
   /\bdue\s*date\b/i,
   /\bkab\s+tak\s+pay\b/i,
@@ -539,6 +579,12 @@ const detectIntent = (text, customerName = null) => {
   for (const pat of NOISE_PATTERNS) {
     if (pat.test(clean)) return 'NOISE';
   }
+
+  // 0c. Check AUDIO_CHECK — customer asking if they can be heard / audio unclear
+  // Must come before UNCLEAR so it isn't swallowed by the generic unclear bucket
+  for (const pat of AUDIO_CHECK_PATTERNS) {
+    if (pat.test(clean)) return 'AUDIO_CHECK';
+  }
   
   // 1. Check sensitive queries
   for (const pat of ASK_SENSITIVE_PATTERNS) {
@@ -619,7 +665,27 @@ const detectIntent = (text, customerName = null) => {
 
   const wrongPersonPatterns = [
     /\bwrong\b/i,
+    /\brong\b/i,
     /\bgalat\b/i,
+    /\bwrong\s*number\b/i,
+    /\brong\s*number\b/i,
+    /\bgalat\s*number\b/i,
+    /\bgalat\s*insaan\b/i,
+    /\bgalat\s*banda\b/i,
+    /\bgalat\s*bande\b/i,
+    /\bgalat\s*person\b/i,
+    /गलत\s*नंबर/i,
+    /गलत\s*नम्बर/i,
+    /रॉन्ग\s*नंबर/i,
+    /रॉन्ग\s*नम्बर/i,
+    /रोंग\s*नंबर/i,
+    /रोंग\s*नम्बर/i,
+    /रॉन्ग/i,
+    /रोंग/i,
+    /गलत/i,
+    /गलत\s*इंसान/i,
+    /गलत\s*बंदा/i,
+    /गलत\s*बंदे/i,
     new RegExp(`\\byeh\\s+${firstName}\\s+nah?i\\s+hai\\b`, 'i'),
     new RegExp(`\\bmain\\s+unka\\s+bhai\\b`, 'i'),
     new RegExp(`\\bmain\\s+unka\\s+friend\\b`, 'i'),
@@ -719,20 +785,87 @@ const detectIntent = (text, customerName = null) => {
   return 'UNCLEAR';
 };
 
-const simulateMockReply = (userText, currentState, customerName, amount, bankName, unclearRetriesRef) => {
-  let intent = detectIntent(userText, customerName);
+const isIncompleteThought = (text) => {
+  const clean = (text || '').trim().toLowerCase();
+  if (!clean) return false;
   
+  // 1. Trailing conjunctions/fillers/prepositions
+  const trailingAscii = /\b(lekin|agar|ya|aur|aaur|ki|kyunki|kyonki|yaar|but|if|because|so|then|or|and)\b\s*[.…]*$/i;
+  const trailingDevanagari = /(?:^|\s)(लेकिन|अगर|या|और|कि|क्योंकि|यार)\s*[.…]*$/i;
+  if (trailingAscii.test(clean) || trailingDevanagari.test(clean)) return true;
+
+  // 2. Starts with a subordinate conjunction but doesn't end with a clear verb or completion indicator
+  const subordinatePatterns = [
+    /\b(agar|lekin|kyunki|kyonki|if|but|because)\b/i,
+    /(?:^|\s)(अगर|लेकिन|क्योंकि)(?:\s|$)/i
+  ];
+  if (subordinatePatterns.some(pat => pat.test(clean))) {
+    // Common final verbs/helpers/conclusions
+    const concludingPatterns = [
+      /\b(hai|hain|hoon|hu|ho|tha|thi|the|gaya|gaye|gayi|karo|do|de|bhejo|bhej|bola|bol|boliye|bataiye|rha|raha|rahi|rahe|karunga|karungi|pay|link|karna|karke|rakhta|rakhti|rakho|bye|ok|okay|dhanyavaad|shukriya|alvida)\b\s*[.…]*$/i,
+      /[\u0900-\u097F]+(है|हैं|हूं|हु|हो|था|थी|थे|गया|गए|गयी|करो|दो|दे|भेजो|भेज|बोला|बोल|बोलिए|बताइए|रहा|रही|रहे|करूंगा|करूंगी|करना|रखता|रखती|रखो|धन्यवाद|शुक्रिया|बाय)\s*[.…]*$/i
+    ];
+    // Future/present suffixes
+    const suffixPattern = /\w+(unga|ungi|ega|egi|enge|ta|te|ti)\b\s*[.…]*$/i;
+    const hasEnding = concludingPatterns.some(pat => pat.test(clean)) || suffixPattern.test(clean);
+    if (!hasEnding) return true;
+  }
+
+  return false;
+};
+
+const simulateMockReply = (userText, currentState, customerName, amount, bankName, unclearRetriesRef) => {
   const terminalStates = [
     'CALL_ENDED_SUCCESS', 'CALL_ENDED_REFUSED', 'CALL_ENDED_WRONG_NUMBER',
     'CALL_ENDED_UNCLEAR', 'CALL_ENDED_FINANCIAL', 'CALL_ENDED_CALLBACK',
     'PAYMENT_CONFIRM', 'CALL_ENDED_ESCALATED', 'CALL_ENDED_POLITE'
   ];
 
+  if (isIncompleteThought(userText) && !terminalStates.includes(currentState)) {
+    return {
+      bot_text: "[continue_listening]",
+      state: currentState,
+      is_terminal: false,
+      intent: 'UNCLEAR',
+      emotion: 'Neutral',
+      no_op: true
+    };
+  }
+
+  let intent = detectIntent(userText, customerName);
+
+  // Global check for WRONG_PERSON intent in non-terminal states
+  // Explicit wrong-number statements bypass retries entirely and terminate the call immediately
+  if (intent === 'WRONG_PERSON' && !terminalStates.includes(currentState)) {
+    if (unclearRetriesRef) unclearRetriesRef.current = 0;
+    return {
+      bot_text: "Oh sorry, lagta hai mujhe wrong number mil gaya. Maaf kijiye, dhanyavaad.",
+      state: 'CALL_ENDED_WRONG_NUMBER',
+      is_terminal: true,
+      intent: intent,
+      emotion: 'Apologetic'
+    };
+  }
+
+  // Global check for AUDIO_CHECK intent in non-terminal states
+  // Customer is saying they can't hear clearly — this is ACTIVE engagement.
+  // Answer with identity + re-confirmation, do NOT end the call.
+  if (intent === 'AUDIO_CHECK' && !terminalStates.includes(currentState)) {
+    if (unclearRetriesRef) unclearRetriesRef.current = 0; // Reset — this is NOT a silence
+    return {
+      bot_text: `Sorry for that, main ${bankName} Bank se bol raha hoon aapke pending loan ke baare mein. Kya ab meri awaaz aapko clearly aa rahi hai?`,
+      state: currentState, // stay in same state — re-confirm audio then continue
+      is_terminal: false,
+      intent: 'AUDIO_CHECK',
+      emotion: 'Apologetic'
+    };
+  }
+
   // Global check for silence in non-terminal states
   if (intent === 'SILENCE' && !terminalStates.includes(currentState)) {
     if (unclearRetriesRef) {
       unclearRetriesRef.current += 1;
-      if (unclearRetriesRef.current > 1) {
+      if (unclearRetriesRef.current > 3) {
         return {
           bot_text: "Lagta hai hamari aawaz nahi pahunch rahi hai. Hum aapse baad mein contact karenge. Dhanyavaad.",
           state: 'CALL_ENDED_UNCLEAR',
@@ -939,6 +1072,30 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
       is_terminal: false,
       intent: intent,
       emotion: 'Helpful'
+    };
+  }
+
+  // Rule 4: If confidence on intent classification is below 90%, do not advance state
+  const confidence = (intent === 'UNCLEAR') ? 0.5 : 1.0;
+  if (confidence < 0.9 && !terminalStates.includes(currentState)) {
+    if (unclearRetriesRef) {
+      unclearRetriesRef.current += 1;
+      if (unclearRetriesRef.current > 2) {
+        return {
+          bot_text: "Lagta hai hamari aawaz nahi pahunch rahi hai. Hum aapse baad mein contact karenge. Dhanyavaad.",
+          state: 'CALL_ENDED_UNCLEAR',
+          is_terminal: true,
+          intent: 'UNCLEAR',
+          emotion: 'Neutral'
+        };
+      }
+    }
+    return {
+      bot_text: "Sorry, aapne kya kaha, dobara bata sakte hain?",
+      state: currentState,
+      is_terminal: false,
+      intent: 'UNCLEAR',
+      emotion: 'Confused'
     };
   }
 
@@ -1451,6 +1608,9 @@ const validateDate = (dateStr) => {
 };
 
 export default function VoiceBot() {
+  // Global theme state (defaults to true for dark mode, can toggle to false for light mode)
+  const [isDarkMode, setIsDarkMode] = useState(true);
+
   // Global Mock Mode state
   const [isMockMode, setIsMockMode] = useState(() => {
     if (window.MOCK_API !== undefined) return window.MOCK_API === true;
@@ -1493,7 +1653,7 @@ export default function VoiceBot() {
 
   // Call summary states
   const [callSummary, setCallSummary] = useState(null);
-  const [showAgentConsole, setShowAgentConsole] = useState(false);
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
 
   // Refs
@@ -1525,13 +1685,18 @@ export default function VoiceBot() {
   const apiRetryCountRef = useRef(0);
   const MAX_API_RETRIES = 2;
   // Max consecutive silence/unclear turns before ending call gracefully (applies to BOTH mock and real mode)
-  const MAX_SILENCE_RETRIES = 1; // After 1 retry prompt, end the call on the next silence
+  // 3 retries = 3 prompt attempts ("hello? kya sunaai de raha hai?") before giving up
+  // Each STT no-speech window is ~3s, so 3 retries ≈ 9-10s of real wait time
+  const MAX_SILENCE_RETRIES = 3;
   // Hard safety timeout: if no speech detected for this many ms, end the call
-  const NO_SPEECH_TIMEOUT_MS = 15000;
+  // 30s gives plenty of time even with slow speakers and long bot utterances
+  const NO_SPEECH_TIMEOUT_MS = 30000;
   const noSpeechTimerRef = useRef(null); // Tracks the hard safety timeout handle
   const lastSpeechTimeRef = useRef(Date.now()); // Tracks when user last spoke
   // Store latest handleUserMessage in ref to avoid stale closure in recognition callbacks
   const handleUserMessageRef = useRef(null);
+  const turnTimerRef = useRef(null);
+  const transcriptBufferRef = useRef('');
 
   // Remapped setter functions for synchronous updates to both state and refs
   const setIsCallActive = (val) => {
@@ -1645,10 +1810,32 @@ export default function VoiceBot() {
       return;
     }
 
+    // ── AEC HINT: acquire the mic with hardware echo-cancellation constraints ──
+    // Chrome's SpeechRecognition picks up the *active* getUserMedia track, so
+    // pre-acquiring it with echoCancellation:true causes the browser to apply
+    // hardware/software AEC before audio reaches the recognition engine.
+    // This suppresses most of the speaker-to-mic feedback at the source.
+    let aecStream = null;
+    navigator.mediaDevices?.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        // Explicitly set channel to mono — AEC works better on mono captures
+        channelCount: 1
+      }
+    }).then(stream => {
+      aecStream = stream; // hold reference so track stays alive
+      console.log('[AEC] getUserMedia with echoCancellation:true acquired');
+    }).catch(err => {
+      console.warn('[AEC] getUserMedia AEC hint failed (non-blocking):', err.message);
+    });
+
     const recognition = new SpeechRecognition();
     recognition.lang = 'hi-IN';
     // continuous=true keeps the mic open permanently — the browser's built-in VAD
     // fires onresult whenever it detects a complete utterance.
+    // NOTE: mic is intentionally stopped during TTS via muteMicDuringTTS().
     recognition.continuous = true;
     recognition.interimResults = true; // Enable interim for barge-in detection
     recognition.maxAlternatives = 1;
@@ -1668,12 +1855,15 @@ export default function VoiceBot() {
       // If interim result detected while bot is speaking, that's a barge-in signal
       if (!result.isFinal) {
         if (isSpeakingRef.current && !isMutedRef.current) {
-          console.log('[STT] Interim speech detected while bot speaking — possible barge-in');
-          // Stop bot audio immediately on detected speech
-          if (audioRef.current) audioRef.current.pause();
+          console.log('[STT] Interim speech detected while bot speaking — barge-in: stopping bot');
+          // Stop bot audio immediately; onBotFinishedSpeaking will unlock the turn
+          if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
           if (window.speechSynthesis) window.speechSynthesis.cancel();
-          setIsSpeaking(false);
-          isSpeakingRef.current = false;
+          // Clear stale transcript buffer so we don't send bot echoes
+          transcriptBufferRef.current = '';
+          if (turnTimerRef.current) { clearTimeout(turnTimerRef.current); turnTimerRef.current = null; }
+          // Properly finalize the speaking state so turn-lock is released
+          onBotFinishedSpeakingRef.current?.();
         }
         return; // Wait for final result
       }
@@ -1687,22 +1877,45 @@ export default function VoiceBot() {
         return;
       }
 
-      // Echo-cancellation: ignore if too similar to bot's last spoken text
-      if (isSpeakingRef.current) {
-        const cleanTranscript = transcript.toLowerCase().replace(/[^\u0000-\u007E\u0900-\u097F]/g, '').replace(/\s+/g, ' ').trim();
-        const cleanBotText = lastBotSpokenTextRef.current.toLowerCase().replace(/[^\u0000-\u007E\u0900-\u097F]/g, '').replace(/\s+/g, ' ').trim();
-        const overlap = cleanBotText && cleanTranscript.length > 3 &&
-          (cleanBotText.includes(cleanTranscript) || cleanTranscript.includes(cleanBotText.slice(0, 20)));
-        if (overlap) {
-          console.log('[STT] Echo-cancelled bot voice reflection:', transcript);
+      // ── TRANSCRIPT-LEVEL ECHO FILTER ──────────────────────────────────────
+      // Defence-in-depth: even if the mic mute didn't fire in time (race
+      // condition, system audio delay), drop any transcript that closely
+      // matches what the bot just said. Uses trigram overlap so partial
+      // captures like "देता हूं" or "बता सकते हैं" are correctly rejected.
+      const computeTrigramSimilarity = (a, b) => {
+        const normalize = s => s.toLowerCase().replace(/\s+/g, ' ').trim();
+        const trigrams = s => {
+          const t = new Set();
+          for (let i = 0; i <= s.length - 3; i++) t.add(s.slice(i, i + 3));
+          return t;
+        };
+        const ta = trigrams(normalize(a));
+        const tb = trigrams(normalize(b));
+        if (!ta.size || !tb.size) return 0;
+        let shared = 0;
+        for (const g of ta) if (tb.has(g)) shared++;
+        return shared / Math.min(ta.size, tb.size);
+      };
+
+      const lastBot = lastBotSpokenTextRef.current || '';
+      if (lastBot && transcript.length > 3) {
+        const similarity = computeTrigramSimilarity(transcript, lastBot);
+        if (similarity > 0.45) {
+          console.warn(`[ECHO-FILTER] Dropped transcript — ${(similarity * 100).toFixed(0)}% trigram overlap with bot text: "${transcript}"`);
           return;
         }
-        // Real barge-in: stop bot
-        console.log('[STT] Customer barge-in detected. Stopping bot audio.');
-        if (audioRef.current) audioRef.current.pause();
+      }
+
+      // ── SPEAKING-STATE GUARD ───────────────────────────────────────────────
+      // If bot is still marked as speaking (edge case: audio element fired onend
+      // but isSpeakingRef hasn't cleared yet), treat this as a barge-in.
+      if (isSpeakingRef.current) {
+        console.log('[STT] Final transcript arrived while bot speaking — treating as barge-in');
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
         if (window.speechSynthesis) window.speechSynthesis.cancel();
-        setIsSpeaking(false);
-        isSpeakingRef.current = false;
+        transcriptBufferRef.current = '';
+        if (turnTimerRef.current) { clearTimeout(turnTimerRef.current); turnTimerRef.current = null; }
+        onBotFinishedSpeakingRef.current?.();
       }
 
       // Block duplicate processing
@@ -1715,10 +1928,25 @@ export default function VoiceBot() {
       silenceCountRef.current = 0;
       consecutiveSpeechErrorsRef.current = 0;
 
-      // Dispatch to message handler via ref to avoid stale closures
-      if (handleUserMessageRef.current) {
-        handleUserMessageRef.current(transcript);
-      }
+      // Aggregate transcript in buffer
+      transcriptBufferRef.current = (transcriptBufferRef.current ? transcriptBufferRef.current + ' ' : '') + transcript;
+
+      // Reset safety timeout on any speech
+      lastSpeechTimeRef.current = Date.now();
+      if (noSpeechTimerRef.current) clearTimeout(noSpeechTimerRef.current);
+
+      // Debounce turn submission: wait 0.6 seconds of silence since last final result
+      if (turnTimerRef.current) clearTimeout(turnTimerRef.current);
+      turnTimerRef.current = setTimeout(() => {
+        const finalText = transcriptBufferRef.current.trim();
+        transcriptBufferRef.current = '';
+        if (finalText) {
+          console.log(`[STT-DEBOUNCE] Turn aggregated and finalized: "${finalText}"`);
+          if (handleUserMessageRef.current) {
+            handleUserMessageRef.current(finalText);
+          }
+        }
+      }, 600);
     };
 
     recognition.onerror = (event) => {
@@ -1778,14 +2006,22 @@ export default function VoiceBot() {
         console.log('[STT] Mic error flag set — not restarting');
         return;
       }
+
+      // ── KEY VAD FIX: Never auto-restart while bot is speaking. ──────────────
+      // onBotFinishedSpeaking() is responsible for restarting after TTS ends.
+      // Without this guard the mic comes back up mid-utterance and the bot
+      // hears its own voice, creating the "echo customer turn" bug.
+      if (isSpeakingRef.current) {
+        console.log('[STT] Bot is speaking — deferring mic restart to onBotFinishedSpeaking');
+        return;
+      }
       
-      // Auto-restart unless terminal/hold/muted
-      // NOTE: We restart even during speaking to detect barge-ins
+      // Auto-restart unless terminal/hold/muted/speaking
       if (isCallActiveRef.current && !isTerminalRef.current && !isOnHoldRef.current && !isMutedRef.current) {
-        const delay = consecutiveSpeechErrorsRef.current > 0 ? 500 : 100;
+        const delay = consecutiveSpeechErrorsRef.current > 0 ? 500 : 150;
         console.log(`[STT] Auto-restarting in ${delay}ms...`);
         setTimeout(() => {
-          if (isCallActiveRef.current && !isTerminalRef.current && !intentionalAbortRef.current) {
+          if (isCallActiveRef.current && !isTerminalRef.current && !intentionalAbortRef.current && !isSpeakingRef.current) {
             startListeningContinuous();
           }
         }, delay);
@@ -1799,6 +2035,16 @@ export default function VoiceBot() {
         intentionalAbortRef.current = true;
         try { recognitionRef.current.stop(); } catch (_) {}
       }
+      if (turnTimerRef.current) {
+        clearTimeout(turnTimerRef.current);
+        turnTimerRef.current = null;
+      }
+      transcriptBufferRef.current = '';
+      // Release AEC mic stream so browser stops showing mic-active indicator
+      if (aecStream) {
+        aecStream.getTracks().forEach(t => t.stop());
+        aecStream = null;
+      }
     };
   }, []);
 
@@ -1808,6 +2054,10 @@ export default function VoiceBot() {
       chatBottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isSpeaking, isListening, isThinking]);
+
+  // Stable ref so the recognition closure (set up once in useEffect[]) can
+  // always call the latest version of onBotFinishedSpeaking without stale closures.
+  const onBotFinishedSpeakingRef = React.useRef(null);
 
   // ─── Core helper: finalize a terminal state after TTS completes ───────────
   const finalizePendingTerminal = () => {
@@ -1830,6 +2080,8 @@ export default function VoiceBot() {
     setIsSpeaking(false);
     isSpeakingRef.current = false;
     isProcessingTurnRef.current = false; // Unlock for next user turn
+    // Clear intentionalAbort so the upcoming startListeningContinuous() works
+    intentionalAbortRef.current = false;
 
     if (pendingTerminalStateRef.current) {
       finalizePendingTerminal();
@@ -1837,14 +2089,37 @@ export default function VoiceBot() {
     }
 
     if (!isTerminalRef.current && !isOnHoldRef.current && !isMutedRef.current) {
-      // Small grace period before opening mic to avoid echo
+      // ── VAD HOLDOFF: wait for speaker ring-down before reopening mic ────────
+      // 600 ms gives the room acoustics / speaker echo time to decay so the
+      // first customer utterance is not contaminated by bot's trailing audio.
       setTimeout(() => {
-        if (!isTerminalRef.current && isCallActiveRef.current) {
-          console.log('[FLOW] Resuming listening after bot speech');
+        if (!isTerminalRef.current && isCallActiveRef.current && !isSpeakingRef.current) {
+          console.log('[FLOW] Holdoff complete — reopening mic for customer speech');
           startListeningContinuous();
         }
-      }, 200);
+      }, 600);
     }
+  };
+
+  // Keep ref in sync so barge-in (inside recognition closure) can call it
+  React.useEffect(() => {
+    onBotFinishedSpeakingRef.current = onBotFinishedSpeaking;
+  });
+
+  // ── STT mute helper: stop recognition cleanly while bot speaks ─────────────
+  // This is the primary fix for the VAD echo bug. The mic is fully silenced
+  // for the entire duration of TTS. onBotFinishedSpeaking() restarts it after
+  // a 600 ms holdoff so residual speaker ring-down has time to decay.
+  const muteMicDuringTTS = () => {
+    if (recognitionRef.current && isListeningRef.current) {
+      console.log('[VAD] Muting mic for TTS — stopping STT session');
+      // Use intentionalAbortRef so onend does NOT auto-restart
+      intentionalAbortRef.current = true;
+      try { recognitionRef.current.stop(); } catch (_) {}
+    }
+    // Also flush any pending debounced turn — we don't want partial transcripts
+    if (turnTimerRef.current) { clearTimeout(turnTimerRef.current); turnTimerRef.current = null; }
+    transcriptBufferRef.current = '';
   };
 
   // Audio Playback
@@ -1852,6 +2127,9 @@ export default function VoiceBot() {
     if (recognitionRef.current) {
       recognitionRef.current.lang = 'hi-IN';
     }
+
+    // ── MUTE MIC IMMEDIATELY — before any TTS starts ──────────────────────────
+    muteMicDuringTTS();
 
     lastBotSpokenTextRef.current = text || '';
     console.log(`[TTS] Playing audio. URL=${url || 'mock'} Text="${(text || '').slice(0, 60)}..."`);
@@ -1866,34 +2144,49 @@ export default function VoiceBot() {
         utterance.lang = 'hi-IN';
         utterance.rate = 1.0;
 
+        let synthTimeout = null;
+        let finished = false;
+
+        const finishOnce = () => {
+          if (finished) return;
+          finished = true;
+          if (synthTimeout) clearTimeout(synthTimeout);
+          onBotFinishedSpeakingRef.current?.();
+        };
+
         utterance.onstart = () => {
           console.log('[TTS] SpeechSynthesis started');
           setIsSpeaking(true);
           isSpeakingRef.current = true;
           setIsThinking(false);
           isThinkingRef.current = false;
-        };
-        utterance.onend = () => {
-          console.log('[TTS] SpeechSynthesis ended');
-          onBotFinishedSpeaking();
-        };
-        utterance.onerror = (e) => {
-          console.error('[TTS] SpeechSynthesis error:', e.error);
-          onBotFinishedSpeaking();
+          // Mic was already muted in muteMicDuringTTS() before speak() was called.
+          // This is belt-and-suspenders — mute again in case of race conditions.
+          muteMicDuringTTS();
+
+          // Chrome stall workaround: if synthesis hasn't started speaking after 1.5s, recover
+          synthTimeout = setTimeout(() => {
+            if (isSpeakingRef.current && !finished && window.speechSynthesis.speaking === false) {
+              console.warn('[TTS] Chrome synthesis stall detected — recovering');
+              window.speechSynthesis.cancel();
+              finishOnce();
+            }
+          }, 1500);
         };
 
-        // Chrome bug workaround: re-speak if synthesis stalls
-        const synthTimeout = setTimeout(() => {
-          if (isSpeakingRef.current && window.speechSynthesis.speaking === false) {
-            console.warn('[TTS] Chrome synthesis stall detected — retrying');
-            window.speechSynthesis.cancel();
-            window.speechSynthesis.speak(utterance);
-          }
-        }, 1000);
         utterance.onend = () => {
-          clearTimeout(synthTimeout);
           console.log('[TTS] SpeechSynthesis ended');
-          onBotFinishedSpeaking();
+          finishOnce();
+        };
+
+        utterance.onerror = (e) => {
+          // 'interrupted' is normal on barge-in — not an error
+          if (e.error === 'interrupted' || e.error === 'canceled') {
+            console.log('[TTS] SpeechSynthesis interrupted (barge-in or cancel) — recovering');
+          } else {
+            console.error('[TTS] SpeechSynthesis error:', e.error);
+          }
+          finishOnce();
         };
 
         window.speechSynthesis.speak(utterance);
@@ -1949,6 +2242,9 @@ export default function VoiceBot() {
     isSpeakingRef.current = true;
     setIsThinking(false);
     isThinkingRef.current = false;
+    // Belt-and-suspenders: ensure mic is off even if it restarted between
+    // playBotAudio() call and the actual <audio> element firing onplay.
+    muteMicDuringTTS();
   };
 
   const handleAudioPlayEnded = () => {
@@ -2331,6 +2627,17 @@ export default function VoiceBot() {
         console.log(`[LLM-MOCK] State: ${mockResult.state}, Intent: ${mockResult.intent}, Terminal: ${mockResult.is_terminal}`);
         console.log(`[LLM-MOCK] Bot: "${mockResult.bot_text}"`);
 
+        if (mockResult.no_op || mockResult.bot_text === '[continue_listening]') {
+          console.log('[LLM-MOCK] No-op received. Continuing to listen without advancing state.');
+          setIsThinking(false);
+          isThinkingRef.current = false;
+          isProcessingTurnRef.current = false; // Unlock for next user turn
+          if (!isTerminalRef.current && !isOnHoldRef.current && !isMutedRef.current) {
+            startListeningContinuous();
+          }
+          return;
+        }
+
         setCurrentState(mockResult.state);
         currentStateRef.current = mockResult.state;
 
@@ -2390,6 +2697,21 @@ export default function VoiceBot() {
           const data = await res.json();
           console.log(`[LLM] Response: state=${data.state}, terminal=${data.is_terminal}`);
           console.log(`[LLM] Bot text: "${data.bot_text}"`);
+
+          // Check for no-op continue_listening signal
+          if (data.no_op || data.bot_text === '[continue_listening]') {
+            console.log('[LLM] No-op received. Continuing to listen without advancing state or playing audio.');
+            apiRetryCountRef.current = 0; // Reset on success
+            setIsThinking(false);
+            isThinkingRef.current = false;
+            isProcessingTurnRef.current = false; // Unlock for next user turn
+            
+            // Resume listening
+            if (!isTerminalRef.current && !isOnHoldRef.current && !isMutedRef.current) {
+              startListeningContinuous();
+            }
+            return;
+          }
 
           // Validate response
           if (!data.bot_text || data.bot_text === 'NaN' || data.bot_text.trim() === '') {
@@ -2579,6 +2901,11 @@ export default function VoiceBot() {
     isListeningRef.current = false;
     setIsThinking(false);
     isThinkingRef.current = false;
+    if (turnTimerRef.current) {
+      clearTimeout(turnTimerRef.current);
+      turnTimerRef.current = null;
+    }
+    transcriptBufferRef.current = '';
   };
 
   // Mute / Speaker toggles
@@ -2682,7 +3009,7 @@ export default function VoiceBot() {
       txtContent += `CALL TRANSCRIPT\n`;
       txtContent += `---------------\n`;
       messages.forEach(m => {
-        const sender = m.sender === 'user' ? 'Customer' : 'AI Agent';
+        const sender = m.sender === 'user' ? 'Customer' : 'BankConnect Assistant';
         txtContent += `[${m.timestamp}] ${sender}: ${m.text}\n`;
       });
       
@@ -2777,7 +3104,7 @@ export default function VoiceBot() {
             doc.addPage();
             y = 20;
           }
-          const sender = m.sender === 'user' ? 'Customer' : 'AI Agent';
+          const sender = m.sender === 'user' ? 'Customer' : 'BankConnect Assistant';
           const timeStr = `[${m.timestamp}] ${sender}:`;
           
           doc.setFont("helvetica", "bold");
@@ -2856,11 +3183,17 @@ export default function VoiceBot() {
   };
 
   return (
-    <div className="min-h-screen bg-[#070B1A] text-[#F8FAFC] flex flex-col font-sans overflow-hidden select-none relative">
+    <div className={`min-h-screen flex flex-col font-sans overflow-hidden select-none relative transition-colors duration-300 ${
+      isDarkMode ? 'bg-[#070B1A] text-[#F8FAFC]' : 'bg-[#F8FAFC] text-[#0F172A]'
+    }`}>
       
       {/* Background Mesh Glow */}
-      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-[#4F46E5]/10 rounded-full blur-[140px] pointer-events-none"></div>
-      <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-[#7C3AED]/10 rounded-full blur-[140px] pointer-events-none"></div>
+      <div className={`absolute top-0 left-1/4 w-[500px] h-[500px] rounded-full blur-[140px] pointer-events-none transition-colors duration-300 ${
+        isDarkMode ? 'bg-[#4F46E5]/10' : 'bg-[#4F46E5]/5'
+      }`}></div>
+      <div className={`absolute bottom-0 right-1/4 w-[500px] h-[500px] rounded-full blur-[140px] pointer-events-none transition-colors duration-300 ${
+        isDarkMode ? 'bg-[#7C3AED]/10' : 'bg-[#7C3AED]/5'
+      }`}></div>
 
       {/* Hidden Audio Element */}
       <audio
@@ -2872,18 +3205,24 @@ export default function VoiceBot() {
       />
 
       {/* 1. Header Bar */}
-      <header className="h-16 px-6 bg-[#0E1326] border-b border-slate-800/80 flex items-center justify-between shrink-0 z-30">
+      <header className={`h-16 px-6 flex items-center justify-between shrink-0 z-30 border-b transition-colors duration-300 ${
+        isDarkMode ? 'bg-[#0E1326] border-slate-800/80' : 'bg-white border-slate-200'
+      }`}>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#4F46E5] to-[#7C3AED] flex items-center justify-center shadow-lg shadow-indigo-500/10">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-[15px] font-bold text-white tracking-wide uppercase">
-              Hindi AI Collection Agent
+            <h1 className={`text-[15px] font-bold tracking-wide uppercase transition-colors ${
+              isDarkMode ? 'text-white' : 'text-[#0F172A]'
+            }`}>
+              BankConnect Assistant
             </h1>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">
+              <span className={`text-[10px] font-semibold tracking-wider uppercase transition-colors ${
+                isDarkMode ? 'text-slate-400' : 'text-slate-500'
+              }`}>
                 {isMockMode ? 'Simulator Active (Offline)' : 'Production Server Connected'}
               </span>
             </div>
@@ -2893,40 +3232,59 @@ export default function VoiceBot() {
         {/* Global Controls */}
         <div className="flex items-center gap-4">
           {/* Mock Mode Switcher */}
-          <div className="flex items-center bg-slate-900/60 border border-slate-800 rounded-full px-3 py-1 text-xs">
-            <span className="text-slate-400 font-medium mr-2 tracking-wide uppercase text-[9px]">Mock Mode</span>
+          <div className={`flex items-center rounded-full px-3 py-1 text-xs border transition-colors duration-300 ${
+            isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-100 border-slate-205'
+          }`}>
+            <span className={`font-medium mr-2 tracking-wide uppercase text-[9px] transition-colors ${
+              isDarkMode ? 'text-slate-400' : 'text-slate-600'
+            }`}>Mock Mode</span>
             <button
               onClick={() => {
                 if (window.speechSynthesis) window.speechSynthesis.cancel();
                 setIsMockMode(!isMockMode);
               }}
               className={`relative inline-flex h-4.5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                isMockMode ? 'bg-[#7C3AED]' : 'bg-slate-700'
+                isMockMode ? 'bg-[#7C3AED]' : (isDarkMode ? 'bg-slate-700' : 'bg-slate-300')
               }`}
             >
-              <span className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-slate-900 shadow ring-0 transition duration-200 ease-in-out ${
+              <span className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                 isMockMode ? 'translate-x-4.5' : 'translate-x-0'
               }`} />
             </button>
           </div>
 
-          {/* Agent Console Toggle */}
+          {/* Debug Details Toggle */}
           {isCallActive && (
             <button
-              onClick={() => setShowAgentConsole(!showAgentConsole)}
+              onClick={() => setShowDebugInfo(!showDebugInfo)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all duration-150 active:scale-95 cursor-pointer ${
-                showAgentConsole
+                showDebugInfo
                   ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/15'
-                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  : isDarkMode
+                  ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-[#0F172A] hover:bg-slate-200/50'
               }`}
             >
               <Activity className="w-4.5 h-4.5 text-indigo-400" />
-              <span>{showAgentConsole ? 'Hide Console' : 'Show Agent Console'}</span>
+              <span>{showDebugInfo ? 'Hide Debug Details' : 'Show Debug Details'}</span>
             </button>
           )}
 
+          {/* Theme Toggle Button */}
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className={`p-2 rounded-xl transition duration-150 cursor-pointer ${
+              isDarkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800/50' : 'text-slate-600 hover:text-[#0F172A] hover:bg-slate-100'
+            }`}
+            aria-label="Toggle theme"
+          >
+            {isDarkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-indigo-600" />}
+          </button>
+
           {/* Settings Indicator */}
-          <button className="p-2 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-xl transition duration-150 cursor-pointer">
+          <button className={`p-2 rounded-xl transition duration-150 cursor-pointer ${
+            isDarkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800/50' : 'text-slate-600 hover:text-[#0F172A] hover:bg-slate-100'
+          }`}>
             <Settings className="w-5 h-5" />
           </button>
 
@@ -2965,23 +3323,33 @@ export default function VoiceBot() {
               transition={{ duration: 0.3 }}
               className="absolute inset-0 flex flex-col items-center justify-center p-6 z-10"
             >
-              <div className="w-full max-w-[480px] bg-[#111827] border border-slate-800 rounded-[28px] p-8 shadow-2xl relative overflow-hidden">
+              <div className={`w-full max-w-[480px] border rounded-[28px] p-8 shadow-2xl relative overflow-hidden transition-colors duration-300 ${
+                isDarkMode ? 'bg-[#111827] border-slate-800' : 'bg-white border-slate-205 shadow-2xl shadow-slate-100'
+              }`}>
                 {/* Background lighting */}
                 <div className="absolute top-[-50px] right-[-50px] w-[180px] h-[180px] bg-[#4F46E5]/10 rounded-full blur-[40px]"></div>
 
                 <div className="text-center mb-8">
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 mb-4">
+                  <div className={`inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4 border transition-colors ${
+                    isDarkMode ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-650'
+                  }`}>
                     <Phone className="w-6 h-6" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white tracking-wide">Outbound AI Dialer</h2>
-                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                    Trigger an automated Hind/Hinglish collection call with customized parameters.
+                  <h2 className={`text-2xl font-bold tracking-wide transition-colors ${
+                    isDarkMode ? 'text-white' : 'text-[#0F172A]'
+                  }`}>Outbound AI Dialer</h2>
+                  <p className={`text-xs mt-2 leading-relaxed ${
+                    isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
+                    Trigger an automated Hindi/Hinglish collection call with customized parameters.
                   </p>
                 </div>
 
                 <form onSubmit={handleInitiateCall} className="space-y-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                    <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                      isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                    }`}>
                       Customer Name
                     </label>
                     <input
@@ -2991,9 +3359,11 @@ export default function VoiceBot() {
                         setCustomerName(e.target.value);
                         setNameError(null);
                       }}
-                      className={`w-full bg-[#070B1A] border rounded-xl px-4 py-3 text-slate-200 text-sm focus:outline-none transition-all font-semibold ${
-                        nameError ? 'border-red-500 focus:border-red-500' : 'border-slate-800 focus:border-indigo-500'
-                      }`}
+                      className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold ${
+                        isDarkMode 
+                          ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
+                          : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
+                      } ${nameError ? 'border-red-500 focus:border-red-500' : ''}`}
                       placeholder="e.g. Mahima Dangi"
                     />
                     {nameError && (
@@ -3005,7 +3375,9 @@ export default function VoiceBot() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                      <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                        isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                      }`}>
                         Loan Balance (INR)
                       </label>
                       <input
@@ -3015,9 +3387,11 @@ export default function VoiceBot() {
                           setAmount(e.target.value);
                           setAmountError(null);
                         }}
-                        className={`w-full bg-[#070B1A] border rounded-xl px-4 py-3 text-slate-200 text-sm focus:outline-none transition-all font-semibold ${
-                          amountError ? 'border-red-500 focus:border-red-500' : 'border-slate-800 focus:border-indigo-500'
-                        }`}
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold ${
+                          isDarkMode 
+                            ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
+                            : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
+                        } ${amountError ? 'border-red-500 focus:border-red-500' : ''}`}
                         placeholder="e.g. 5000"
                       />
                       {amountError && (
@@ -3027,7 +3401,9 @@ export default function VoiceBot() {
                       )}
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                      <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                        isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                      }`}>
                         Bank Name
                       </label>
                       <input
@@ -3037,9 +3413,11 @@ export default function VoiceBot() {
                           setBankName(e.target.value);
                           setBankError(null);
                         }}
-                        className={`w-full bg-[#070B1A] border rounded-xl px-4 py-3 text-slate-200 text-sm focus:outline-none transition-all font-semibold ${
-                          bankError ? 'border-red-500 focus:border-red-500' : 'border-slate-800 focus:border-indigo-500'
-                        }`}
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold ${
+                          isDarkMode 
+                            ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
+                            : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
+                        } ${bankError ? 'border-red-500 focus:border-red-500' : ''}`}
                         placeholder="e.g. ICICI"
                       />
                       {bankError && (
@@ -3052,7 +3430,9 @@ export default function VoiceBot() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                      <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                        isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                      }`}>
                         Phone Number
                       </label>
                       <input
@@ -3062,9 +3442,11 @@ export default function VoiceBot() {
                           setPhone(e.target.value);
                           setPhoneError(null);
                         }}
-                        className={`w-full bg-[#070B1A] border rounded-xl px-4 py-3 text-slate-200 text-sm focus:outline-none transition-all font-semibold ${
-                          phoneError ? 'border-red-500 focus:border-red-500' : 'border-slate-800 focus:border-indigo-500'
-                        }`}
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold ${
+                          isDarkMode 
+                            ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
+                            : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
+                        } ${phoneError ? 'border-red-500 focus:border-red-500' : ''}`}
                       />
                       {phoneError && (
                         <p className="text-red-400 text-xs mt-1.5 ml-1 flex items-center gap-1">
@@ -3073,7 +3455,9 @@ export default function VoiceBot() {
                       )}
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                      <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                        isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                      }`}>
                         Due Date
                       </label>
                       <input
@@ -3084,12 +3468,16 @@ export default function VoiceBot() {
                           setDateError(null);
                           setDateWarning(null);
                         }}
-                        className={`w-full bg-[#070B1A] border rounded-xl px-4 py-3 text-slate-200 text-sm focus:outline-none transition-all font-semibold ${
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold ${
+                          isDarkMode 
+                            ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
+                            : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
+                        } ${
                           dateError
                             ? 'border-red-500 focus:border-red-500'
                             : dateWarning
                             ? 'border-amber-500 focus:border-amber-500'
-                            : 'border-slate-800 focus:border-indigo-500'
+                            : ''
                         }`}
                         placeholder="e.g. June 15, 2026"
                       />
@@ -3135,120 +3523,12 @@ export default function VoiceBot() {
               exit={{ opacity: 0 }}
               className="flex-1 flex overflow-hidden"
             >
-              {/* LEFT SIDE PANEL (40% width) - Profile & Customer Information */}
-              {showAgentConsole && (
-                <aside className="w-[40%] min-w-[360px] max-w-[500px] border-r border-slate-800/80 bg-[#0A0E20]/50 p-5 flex flex-col gap-4 overflow-y-auto z-20">
-                <div className="flex items-center gap-2 mb-1 shrink-0">
-                  <Users className="w-5 h-5 text-indigo-400" />
-                  <h2 className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-                    Customer Profile & Loan Data
-                  </h2>
-                </div>
 
-                {/* Profile Card */}
-                <div className="bg-[#111827]/80 border border-slate-800 p-4 rounded-2xl flex items-center gap-4 relative overflow-hidden shrink-0">
-                  <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-lg">
-                    {customerName.charAt(0)}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-100 text-[15px]">{customerName}</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">{phone}</p>
-                  </div>
-                  <div className="absolute right-3 top-3 flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded-full">
-                    <span className="text-[9px] uppercase font-bold text-red-400">Risk Score: 84</span>
-                  </div>
-                </div>
-
-                {/* Loan Card details */}
-                <div className="grid grid-cols-2 gap-3 shrink-0">
-                  <div className="bg-[#111827]/80 border border-slate-800 p-3 rounded-2xl">
-                    <span className="text-[9px] uppercase font-semibold text-slate-400 tracking-wider block">Outstanding Balance</span>
-                    <span className="text-lg font-bold text-white mt-1 block">₹{parseFloat(amount).toLocaleString()}</span>
-                  </div>
-                  <div className="bg-[#111827]/80 border border-slate-800 p-3 rounded-2xl">
-                    <span className="text-[9px] uppercase font-semibold text-slate-400 tracking-wider block">Due Date</span>
-                    <span className="text-xs font-bold text-slate-200 mt-2 block flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-indigo-400" /> {dueDate}
-                    </span>
-                  </div>
-                  <div className="bg-[#111827]/80 border border-slate-800 p-3 rounded-2xl">
-                    <span className="text-[9px] uppercase font-semibold text-slate-400 tracking-wider block">Days Overdue</span>
-                    <span className="text-xs font-bold text-amber-500 mt-2 block flex items-center gap-1.5">
-                      <AlertCircle className="w-3.5 h-3.5" /> 14 Days Late
-                    </span>
-                  </div>
-                  <div className="bg-[#111827]/80 border border-slate-800 p-3 rounded-2xl">
-                    <span className="text-[9px] uppercase font-semibold text-slate-400 tracking-wider block">Collection Loan ID</span>
-                    <span className="text-xs font-bold text-slate-300 mt-2 block font-mono">{loanId}</span>
-                  </div>
-                </div>
-
-                {/* Call Status metrics */}
-                <div className="bg-[#111827]/80 border border-slate-800 p-4 rounded-2xl shrink-0">
-                  <h4 className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2.5 flex items-center gap-1.5">
-                    <Activity className="w-3.5 h-3.5 text-indigo-400" /> Call Center Context
-                  </h4>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between py-1 border-b border-slate-800/40">
-                      <span className="text-slate-400">Current Stage</span>
-                      <span className="font-semibold text-slate-200 uppercase tracking-wide">{currentState.replace(/_/g, ' ')}</span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-slate-800/40">
-                      <span className="text-slate-400">Connection Quality</span>
-                      <span className="font-semibold text-emerald-400 flex items-center gap-1">Excellent</span>
-                    </div>
-                    <div className="flex justify-between py-1">
-                      <span className="text-slate-400">Previous Promise Date</span>
-                      <span className="font-semibold text-slate-500">None Recorded</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Payment History Timeline */}
-                <div className="bg-[#111827]/80 border border-slate-800 p-4 rounded-2xl shrink-0">
-                  <h4 className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-3 flex items-center gap-1.5">
-                    <Landmark className="w-3.5 h-3.5 text-indigo-400" /> Payment History
-                  </h4>
-                  <div className="space-y-3 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[1px] before:bg-slate-800">
-                    <div className="flex items-start gap-3 text-xs pl-5 relative">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 absolute left-[5px] top-[5px]"></div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-200">₹1,500 Paid</span>
-                          <span className="text-[9px] px-1.5 py-0.2 bg-emerald-500/10 text-emerald-400 rounded-md">On Time</span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-0.5">May 12, 2026 via NetBanking</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3 text-xs pl-5 relative">
-                      <div className="w-1.5 h-1.5 rounded-full bg-amber-500 absolute left-[5px] top-[5px]"></div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-200">₹1,500 Paid</span>
-                          <span className="text-[9px] px-1.5 py-0.2 bg-amber-500/10 text-amber-400 rounded-md">2 Days Late</span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-0.5">April 14, 2026 via UPI</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Call Notes Input Fallback */}
-                <div className="bg-[#111827]/80 border border-slate-800 p-4 rounded-2xl flex-1 flex flex-col min-h-[140px]">
-                  <h4 className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2 flex items-center gap-1.5 shrink-0">
-                    <FileText className="w-3.5 h-3.5 text-indigo-400" /> Call Agent Notes
-                  </h4>
-                  <textarea
-                    className="w-full flex-1 bg-[#070B1A]/85 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none font-sans font-medium"
-                    placeholder="Enter customer promise parameters, disposition notes, or call reminders..."
-                    defaultValue={`Customer is cooperative. Outbound dialer successfully reached identity Mahima Dangi. Verification completed.`}
-                  />
-                </div>
-              </aside>
-              )}
 
               {/* CENTER DISPLAY PANEL (Voice Screen & Visualizations) */}
-              <section className="flex-1 flex flex-col justify-between bg-[#070B1A] relative z-20">
+              <section className={`flex-1 flex flex-col justify-between relative z-20 transition-colors duration-300 ${
+                isDarkMode ? 'bg-[#070B1A]' : 'bg-slate-100'
+              }`}>
                 {/* Visual Error notification */}
                 {recognitionError && (
                   <div className="absolute top-4 inset-x-4 bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold px-4 py-3.5 rounded-xl z-50 flex items-center gap-2.5 shadow-md">
@@ -3315,7 +3595,9 @@ export default function VoiceBot() {
                           ? 'bg-gradient-to-br from-red-500/10 to-rose-600/10 border-red-500/40'
                           : isThinking
                           ? 'bg-gradient-to-br from-[#7C3AED]/10 to-indigo-600/10 border-[#7C3AED]/40'
-                          : 'bg-[#111827] border-slate-800'
+                          : isDarkMode
+                          ? 'bg-[#111827] border-slate-800'
+                          : 'bg-white border-slate-200 shadow-sm'
                       }`}
                     >
                       {isSpeaking ? (
@@ -3327,17 +3609,21 @@ export default function VoiceBot() {
                       ) : isOnHold ? (
                         <Pause className="w-12 h-12 text-amber-500" />
                       ) : (
-                        <User className="w-12 h-12 text-slate-400" />
+                        <User className={`w-12 h-12 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`} />
                       )}
                     </motion.div>
                   </div>
 
                   {/* Agent Info Details */}
                   <div className="text-center">
-                    <h3 className="text-xl font-bold text-white tracking-wide">
-                      {isSpeaking ? 'AI Agent Speaking' : isListening ? 'Listening...' : isThinking ? 'Analyzing Response...' : isOnHold ? 'Call On Hold' : 'AI Collection Agent'}
+                    <h3 className={`text-xl font-bold tracking-wide transition-colors duration-300 ${
+                      isDarkMode ? 'text-white' : 'text-slate-800'
+                    }`}>
+                      {isSpeaking ? 'BankConnect Assistant Speaking' : isListening ? 'Listening...' : isThinking ? 'Analyzing Response...' : isOnHold ? 'Call On Hold' : 'BankConnect Assistant'}
                     </h3>
-                    <p className="text-xs text-slate-400 mt-1 flex items-center justify-center gap-1.5 font-semibold">
+                    <p className={`text-xs mt-1 flex items-center justify-center gap-1.5 font-semibold transition-colors duration-300 ${
+                      isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                    }`}>
                       {isOnHold ? (
                         <span className="text-amber-500">HOLD</span>
                       ) : (
@@ -3346,7 +3632,7 @@ export default function VoiceBot() {
                           <span className="text-indigo-400">CONNECTED</span>
                         </>
                       )}
-                      <span className="text-slate-600">|</span>
+                      <span className={isDarkMode ? 'text-slate-700' : 'text-slate-300'}>|</span>
                       <span>Audio quality: Excellent</span>
                     </p>
                   </div>
@@ -3363,7 +3649,9 @@ export default function VoiceBot() {
                             ? 'bg-red-500 waveform-bar'
                             : isThinking
                             ? 'bg-[#7C3AED]/40 h-1.5'
-                            : 'bg-slate-800 h-1'
+                            : isDarkMode
+                            ? 'bg-slate-800 h-1'
+                            : 'bg-slate-300 h-1'
                         }`}
                         style={
                           isSpeaking || isListening
@@ -3379,16 +3667,20 @@ export default function VoiceBot() {
                 </div>
 
                 {/* Bottom Control Bar Area */}
-                <div className="p-6 bg-[#0E1326]/80 border-t border-slate-800/80 flex flex-col items-center gap-5 z-20">
+                <div className={`p-6 border-t flex flex-col items-center gap-5 z-20 transition-colors duration-300 ${
+                  isDarkMode ? 'bg-[#0E1326]/80 border-t-slate-800/80' : 'bg-white border-t-slate-200 shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.05)]'
+                }`}>
                   {/* State description status bar */}
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Bot Collection Stage:</span>
-                    <span className={`text-[9px] uppercase font-bold tracking-wider px-3 py-1 rounded-full bg-gradient-to-r ${
-                      STATE_COLORS[currentState] || 'from-slate-500/10 to-zinc-500/10 text-slate-400 border border-slate-500/30'
-                    }`}>
-                      {currentState.replace(/_/g, ' ')}
-                    </span>
-                  </div>
+                  {showDebugInfo && (
+                    <div className="flex items-center gap-3">
+                      <span className={`text-[10px] font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Bot Collection Stage:</span>
+                      <span className={`text-[9px] uppercase font-bold tracking-wider px-3 py-1 rounded-full bg-gradient-to-r ${
+                        STATE_COLORS[currentState] || 'from-slate-500/10 to-zinc-500/10 text-slate-400 border border-slate-500/30'
+                      }`}>
+                        {currentState.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-6">
                     {/* Mute Button */}
@@ -3398,7 +3690,9 @@ export default function VoiceBot() {
                       className={`w-12 h-12 rounded-full border flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 ${
                         isMuted
                           ? 'bg-red-500/15 border-red-500/30 text-red-400 shadow-md shadow-red-500/5'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                          : isDarkMode
+                          ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 shadow-sm'
                       }`}
                     >
                       {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -3433,41 +3727,25 @@ export default function VoiceBot() {
                       className={`w-12 h-12 rounded-full border flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 ${
                         isOnHold
                           ? 'bg-amber-500/15 border-amber-500/30 text-amber-400 shadow-md'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                          : isDarkMode
+                          ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 shadow-sm'
                       }`}
                     >
                       <Pause className="w-5 h-5" />
                     </button>
                   </div>
 
-                  {/* Standard Call Center Controls */}
-                  <div className="flex gap-4 text-slate-400">
-                    <button className="flex flex-col items-center gap-1 hover:text-white transition duration-150 cursor-pointer">
-                      <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl"><Grid className="w-4 h-4" /></div>
-                      <span className="text-[9px] uppercase tracking-wider font-semibold">Keypad</span>
-                    </button>
-                    <button className="flex flex-col items-center gap-1 hover:text-white transition duration-150 cursor-pointer">
-                      <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl"><ArrowRightLeft className="w-4 h-4" /></div>
-                      <span className="text-[9px] uppercase tracking-wider font-semibold">Transfer</span>
-                    </button>
-                    <button className="flex flex-col items-center gap-1 hover:text-white transition duration-150 cursor-pointer">
-                      <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl"><History className="w-4 h-4" /></div>
-                      <span className="text-[9px] uppercase tracking-wider font-semibold">History</span>
-                    </button>
-                    <button className="flex flex-col items-center gap-1 hover:text-white transition duration-150 cursor-pointer">
-                      <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl"><BarChart2 className="w-4 h-4" /></div>
-                      <span className="text-[9px] uppercase tracking-wider font-semibold">Insights</span>
-                    </button>
-                  </div>
                 </div>
               </section>
 
               {/* RIGHT SIDE PANEL (30% width) - Live Interactive Transcript Cards */}
-              {showAgentConsole && (
-                <aside className="w-[30%] min-w-[300px] border-l border-slate-850 bg-[#0A0E20]/50 p-5 flex flex-col overflow-hidden z-20">
+              <aside className={`w-[30%] min-w-[300px] border-l p-5 flex flex-col overflow-hidden z-20 transition-colors duration-300 ${
+                isDarkMode ? 'border-slate-850 bg-[#0A0E20]/50' : 'border-slate-200 bg-slate-50'
+              }`}>
                 <div className="flex items-center gap-2 mb-3 shrink-0">
                   <MessageSquare className="w-5 h-5 text-indigo-400" />
-                  <h2 className="text-xs uppercase font-bold text-slate-400 tracking-wider">
+                  <h2 className={`text-xs uppercase font-bold tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                     Live Call Transcript
                   </h2>
                 </div>
@@ -3478,21 +3756,23 @@ export default function VoiceBot() {
                       key={msg.id}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className={`p-3.5 rounded-xl border relative flex flex-col gap-2 ${
+                      className={`p-3.5 rounded-xl border relative flex flex-col gap-2 transition-all duration-300 ${
                         msg.sender === 'user'
-                          ? 'bg-[#1E1B4B]/60 border-[#4F46E5]/30'
-                          : 'bg-[#111827]/90 border-slate-800'
+                          ? (isDarkMode ? 'bg-[#1E1B4B]/60 border-[#4F46E5]/30' : 'bg-indigo-50/50 border-indigo-100/80')
+                          : (isDarkMode ? 'bg-[#111827]/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm')
                       }`}
                     >
                       {/* Message header details */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className={`text-[10px] font-bold uppercase ${
-                            msg.sender === 'user' ? 'text-indigo-400' : 'text-[#F5A623]'
+                            msg.sender === 'user'
+                              ? (isDarkMode ? 'text-indigo-400' : 'text-indigo-600')
+                              : (isDarkMode ? 'text-[#F5A623]' : 'text-amber-600')
                           }`}>
-                            {msg.sender === 'user' ? 'Customer' : 'AI Agent'}
+                            {msg.sender === 'user' ? 'Customer' : 'BankConnect Assistant'}
                           </span>
-                          <span className="text-[9px] text-slate-500 font-medium">{msg.timestamp}</span>
+                          <span className={`text-[9px] font-medium ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>{msg.timestamp}</span>
                         </div>
 
                         {/* Replay button for bot responses */}
@@ -3501,7 +3781,11 @@ export default function VoiceBot() {
                             onClick={(e) => handleReplay(e, msg)}
                             disabled={isSpeaking}
                             title="Replay Audio"
-                            className="p-1 rounded bg-slate-900 border border-slate-800 text-xs text-[#F5A623] hover:text-white transition duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            className={`p-1 rounded text-xs transition duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border ${
+                              isDarkMode
+                                ? 'bg-slate-900 border-slate-800 text-[#F5A623] hover:text-white hover:bg-slate-800'
+                                : 'bg-slate-55 border-slate-200 text-amber-600 hover:text-amber-800 hover:bg-slate-100'
+                            }`}
                           >
                             <Play className="w-3 h-3" />
                           </button>
@@ -3510,37 +3794,51 @@ export default function VoiceBot() {
 
                       {/* Message Text */}
                       <p
-                        className="text-xs text-slate-200 leading-relaxed font-sans"
+                        className={`text-xs leading-relaxed font-sans ${isDarkMode ? 'text-slate-200' : 'text-slate-700'}`}
                         style={{ fontFamily: "'Noto Sans Devanagari', 'Outfit', system-ui" }}
                       >
                         {msg.text}
                       </p>
 
                       {/* Transcript card metadata */}
-                      <div className="flex flex-wrap gap-1.5 mt-1 border-t border-slate-800/40 pt-2 text-[9px] font-semibold text-slate-400 uppercase tracking-wide">
-                        {msg.sender === 'user' ? (
-                          <>
-                            <span className="bg-indigo-950/40 px-2 py-0.5 rounded border border-indigo-900/30 text-indigo-400">
-                              Intent: {msg.intent || 'NONE'}
-                            </span>
-                            <span className="bg-purple-950/40 px-2 py-0.5 rounded border border-purple-900/30 text-purple-400">
-                              Emotion: {msg.emotion || 'Neutral'}
-                            </span>
-                            <span className="bg-slate-950/40 px-2 py-0.5 rounded border border-slate-900/30">
-                              Conf: {msg.confidence}%
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="bg-[#7C3AED]/10 px-2 py-0.5 rounded border border-[#7C3AED]/20 text-purple-400">
-                              Stage: {msg.intent ? msg.intent.replace(/_/g, ' ') : 'Greeting'}
-                            </span>
-                            <span className="bg-[#F5A623]/10 px-2 py-0.5 rounded border border-[#F5A623]/20 text-[#F5A623]">
-                              Emotion: {msg.emotion || 'Empathetic'}
-                            </span>
-                          </>
-                        )}
-                      </div>
+                      {showDebugInfo && (
+                        <div className={`flex flex-wrap gap-1.5 mt-1 border-t pt-2 text-[9px] font-semibold uppercase tracking-wide transition-colors ${
+                          isDarkMode ? 'border-slate-800/40 text-slate-400' : 'border-slate-100 text-slate-500'
+                        }`}>
+                          {msg.sender === 'user' ? (
+                            <>
+                              <span className={`px-2 py-0.5 rounded border ${
+                                isDarkMode ? 'bg-indigo-950/40 border-indigo-900/30 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-600'
+                              }`}>
+                                Intent: {msg.intent || 'NONE'}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded border ${
+                                isDarkMode ? 'bg-purple-950/40 border-purple-900/30 text-purple-400' : 'bg-purple-50 border-purple-100 text-purple-600'
+                              }`}>
+                                Emotion: {msg.emotion || 'Neutral'}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded border ${
+                                isDarkMode ? 'bg-slate-950/40 border-slate-900/30' : 'bg-slate-100 border-slate-200'
+                              }`}>
+                                Conf: {msg.confidence}%
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className={`px-2 py-0.5 rounded border ${
+                                isDarkMode ? 'bg-[#7C3AED]/10 border-[#7C3AED]/20 text-purple-400' : 'bg-purple-50 border-purple-100 text-purple-600'
+                              }`}>
+                                Stage: {msg.intent ? msg.intent.replace(/_/g, ' ') : 'Greeting'}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded border ${
+                                isDarkMode ? 'bg-[#F5A623]/10 border-[#F5A623]/20 text-[#F5A623]' : 'bg-amber-50 border-amber-200 text-amber-700'
+                              }`}>
+                                Emotion: {msg.emotion || 'Empathetic'}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </motion.div>
                   ))}
 
@@ -3549,7 +3847,11 @@ export default function VoiceBot() {
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="p-3 bg-[#111827]/40 border border-slate-850 rounded-xl text-center text-xs text-slate-400 flex items-center justify-center gap-2"
+                      className={`p-3 border rounded-xl text-center text-xs flex items-center justify-center gap-2 transition-colors duration-300 ${
+                        isDarkMode
+                          ? 'bg-[#111827]/40 border-slate-850 text-slate-400'
+                          : 'bg-slate-100/60 border-slate-200 text-slate-600'
+                      }`}
                     >
                       <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
                       <span>Analyzing response intent...</span>
@@ -3560,12 +3862,16 @@ export default function VoiceBot() {
                 </div>
                 
                 {/* Debug Text Input for QA Testing */}
-                <div className="mt-4 p-2 bg-[#070B1A]/80 border border-slate-800 rounded-xl flex items-center gap-2 shrink-0">
+                <div className={`mt-4 p-2 border rounded-xl flex items-center gap-2 shrink-0 transition-colors duration-300 ${
+                  isDarkMode ? 'bg-[#070B1A]/80 border-slate-800' : 'bg-white border-slate-250 shadow-sm'
+                }`}>
                   <input
                     type="text"
                     id="debug-chat-input"
                     placeholder="Type client reply..."
-                    className="flex-1 bg-transparent text-xs text-slate-200 focus:outline-none px-2 font-medium"
+                    className={`flex-1 bg-transparent text-xs focus:outline-none px-2 font-medium transition-colors ${
+                      isDarkMode ? 'text-slate-200 placeholder-slate-500' : 'text-slate-800 placeholder-slate-400'
+                    }`}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && e.target.value.trim() && !isThinkingRef.current && !isSpeakingRef.current) {
                         handleUserMessage(e.target.value);
@@ -3588,7 +3894,6 @@ export default function VoiceBot() {
                   </button>
                 </div>
               </aside>
-              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -3600,12 +3905,16 @@ export default function VoiceBot() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-[#070B1A]/95 backdrop-blur-md flex items-center justify-center p-6 z-50 overflow-y-auto"
+              className={`absolute inset-0 backdrop-blur-md flex items-center justify-center p-6 z-50 overflow-y-auto transition-colors duration-300 ${
+                isDarkMode ? 'bg-[#070B1A]/95' : 'bg-slate-900/60'
+              }`}
             >
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 15 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                className="w-full max-w-[560px] bg-[#111827] border border-slate-800 rounded-[28px] p-8 shadow-2xl relative overflow-hidden"
+                className={`w-full max-w-[560px] border rounded-[28px] p-8 shadow-2xl relative overflow-hidden transition-colors duration-300 ${
+                  isDarkMode ? 'bg-[#111827] border-slate-800' : 'bg-white border-slate-200 shadow-2xl'
+                }`}
               >
                 <div className="absolute top-0 right-0 w-[200px] h-[200px] bg-indigo-600/10 rounded-full blur-[50px]"></div>
 
@@ -3613,8 +3922,12 @@ export default function VoiceBot() {
                   <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 mb-3 shadow-inner">
                     <CheckCircle2 className="w-8 h-8" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white tracking-wide">Call Simulation Finished</h2>
-                  <p className="text-xs text-slate-400 mt-1 uppercase tracking-wider font-semibold">
+                  <h2 className={`text-2xl font-bold tracking-wide transition-colors duration-300 ${
+                    isDarkMode ? 'text-white' : 'text-[#0F172A]'
+                  }`}>Call Simulation Finished</h2>
+                  <p className={`text-xs mt-1 uppercase tracking-wider font-semibold ${
+                    isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
                     System Disposition & Outcomes
                   </p>
                 </div>
@@ -3622,41 +3935,57 @@ export default function VoiceBot() {
                 <div className="space-y-4">
                   {/* Summary grid */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-[#070B1A] border border-slate-850 p-3.5 rounded-xl">
-                      <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Total Duration</span>
-                      <span className="text-sm font-semibold text-white mt-1 block flex items-center gap-1.5">
+                    <div className={`border p-3.5 rounded-xl transition-colors duration-300 ${
+                      isDarkMode ? 'bg-[#070B1A] border-slate-850' : 'bg-slate-50 border-slate-150'
+                    }`}>
+                      <span className={`text-[9px] uppercase font-bold block tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Total Duration</span>
+                      <span className={`text-sm font-semibold mt-1 block flex items-center gap-1.5 ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>
                         <Clock className="w-3.5 h-3.5 text-indigo-400" /> {callSummary.duration}
                       </span>
                     </div>
-                    <div className="bg-[#070B1A] border border-slate-850 p-3.5 rounded-xl">
-                      <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">PTP Status</span>
+                    <div className={`border p-3.5 rounded-xl transition-colors duration-300 ${
+                      isDarkMode ? 'bg-[#070B1A] border-slate-850' : 'bg-slate-50 border-slate-150'
+                    }`}>
+                      <span className={`text-[9px] uppercase font-bold block tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>PTP Status</span>
                       <span className={`text-sm font-bold mt-1 block ${
-                        callSummary.promiseToPay === 'Yes' ? 'text-emerald-400' : 'text-slate-400'
+                        callSummary.promiseToPay === 'Yes' 
+                          ? 'text-emerald-400' 
+                          : (isDarkMode ? 'text-slate-400' : 'text-slate-500')
                       }`}>
                         {callSummary.promiseToPay}
                       </span>
                     </div>
-                    <div className="bg-[#070B1A] border border-slate-850 p-3.5 rounded-xl">
-                      <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Disposition Outcome</span>
-                      <span className="text-xs font-semibold text-slate-200 mt-1 block">{callSummary.outcome}</span>
+                    <div className={`border p-3.5 rounded-xl transition-colors duration-300 ${
+                      isDarkMode ? 'bg-[#070B1A] border-slate-850' : 'bg-slate-50 border-slate-150'
+                    }`}>
+                      <span className={`text-[9px] uppercase font-bold block tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Disposition Outcome</span>
+                      <span className={`text-xs font-semibold mt-1 block ${isDarkMode ? 'text-slate-200' : 'text-slate-700'}`}>{callSummary.outcome}</span>
                     </div>
-                    <div className="bg-[#070B1A] border border-slate-850 p-3.5 rounded-xl">
-                      <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Customer Sentiment</span>
-                      <span className="text-xs font-semibold text-slate-200 mt-1 block">{callSummary.sentiment}</span>
+                    <div className={`border p-3.5 rounded-xl transition-colors duration-300 ${
+                      isDarkMode ? 'bg-[#070B1A] border-slate-850' : 'bg-slate-50 border-slate-150'
+                    }`}>
+                      <span className={`text-[9px] uppercase font-bold block tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Customer Sentiment</span>
+                      <span className={`text-xs font-semibold mt-1 block ${isDarkMode ? 'text-slate-200' : 'text-slate-700'}`}>{callSummary.sentiment}</span>
                     </div>
                   </div>
 
                   {/* Summary text */}
-                  <div className="bg-[#070B1A] border border-slate-850 p-4 rounded-xl">
-                    <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Call Summary Log</span>
-                    <p className="text-xs text-slate-300 leading-relaxed mt-1.5">{callSummary.summaryText}</p>
+                  <div className={`border p-4 rounded-xl transition-colors duration-300 ${
+                    isDarkMode ? 'bg-[#070B1A] border-slate-850' : 'bg-slate-50 border-slate-150'
+                  }`}>
+                    <span className={`text-[9px] uppercase font-bold tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Call Summary Log</span>
+                    <p className={`text-xs leading-relaxed mt-1.5 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{callSummary.summaryText}</p>
                   </div>
 
                   {/* Actions buttons */}
                   <div className="flex gap-3 pt-4">
                     <button
                       onClick={handleRestart}
-                      className="flex-1 bg-[#1E2940] hover:bg-[#2A3754] border border-slate-800 text-slate-200 hover:text-white font-bold py-3.5 px-4 rounded-xl transition duration-150 transform active:scale-[0.98] text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow"
+                      className={`flex-1 font-bold py-3.5 px-4 rounded-xl transition duration-150 transform active:scale-[0.98] text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow border ${
+                        isDarkMode
+                          ? 'bg-[#1E2940] hover:bg-[#2A3754] border-slate-800 text-slate-200 hover:text-white'
+                          : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700 hover:text-slate-900'
+                      }`}
                     >
                       <RefreshCw className="w-4 h-4" /> Start New Call
                     </button>
@@ -3675,7 +4004,9 @@ export default function VoiceBot() {
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.95 }}
                             transition={{ duration: 0.15 }}
-                            className="absolute bottom-full mb-2 right-0 left-0 bg-[#0E1326] border border-slate-800 rounded-xl shadow-xl z-50 overflow-hidden"
+                            className={`absolute bottom-full mb-2 right-0 left-0 border rounded-xl shadow-xl z-50 overflow-hidden ${
+                              isDarkMode ? 'bg-[#0E1326] border-slate-800' : 'bg-white border-slate-200'
+                            }`}
                           >
                             <div className="p-1.5 flex flex-col gap-1">
                               <button
@@ -3683,7 +4014,9 @@ export default function VoiceBot() {
                                   exportCallSummary('pdf');
                                   setShowExportDropdown(false);
                                 }}
-                                className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-200 hover:text-white hover:bg-slate-800/80 rounded-lg transition duration-150 flex items-center gap-2 cursor-pointer"
+                                className={`w-full text-left px-4 py-2.5 text-xs font-semibold rounded-lg transition duration-150 flex items-center gap-2 cursor-pointer ${
+                                  isDarkMode ? 'text-slate-200 hover:text-white hover:bg-slate-800/80' : 'text-slate-700 hover:text-[#0F172A] hover:bg-slate-100'
+                                }`}
                               >
                                 <span className="w-2 h-2 rounded-full bg-red-500"></span>
                                 Export as PDF
@@ -3693,7 +4026,9 @@ export default function VoiceBot() {
                                   exportCallSummary('txt');
                                   setShowExportDropdown(false);
                                 }}
-                                className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-200 hover:text-white hover:bg-slate-800/80 rounded-lg transition duration-150 flex items-center gap-2 cursor-pointer"
+                                className={`w-full text-left px-4 py-2.5 text-xs font-semibold rounded-lg transition duration-150 flex items-center gap-2 cursor-pointer ${
+                                  isDarkMode ? 'text-slate-200 hover:text-white hover:bg-slate-800/80' : 'text-slate-700 hover:text-[#0F172A] hover:bg-slate-100'
+                                }`}
                               >
                                 <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                                 Export as TXT
@@ -3703,7 +4038,9 @@ export default function VoiceBot() {
                                   exportCallSummary('json');
                                   setShowExportDropdown(false);
                                 }}
-                                className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-200 hover:text-white hover:bg-slate-800/80 rounded-lg transition duration-150 flex items-center gap-2 cursor-pointer"
+                                className={`w-full text-left px-4 py-2.5 text-xs font-semibold rounded-lg transition duration-150 flex items-center gap-2 cursor-pointer ${
+                                  isDarkMode ? 'text-slate-200 hover:text-white hover:bg-slate-800/80' : 'text-slate-700 hover:text-[#0F172A] hover:bg-slate-100'
+                                }`}
                               >
                                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                                 Export as JSON

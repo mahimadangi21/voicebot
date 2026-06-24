@@ -41,12 +41,9 @@ ctx2 = CallContext(name="Jitesh Soni", amount=5000)
 print("BOT:", bot_say(ctx2))
 print("USER: Nahi, galat number hai")
 print("BOT:", process_user_reply(ctx2, "Nahi, galat number hai"))
-assert ctx2.state.name == "ASK_JITESH"
-print("USER: Nahi hai")
-print("BOT:", process_user_reply(ctx2, "Nahi hai"))
 print("Final state:", ctx2.state)
-assert ctx2.state.value == "call_ended_wrong_number"
-print("PASSED - call correctly cut on wrong number.")
+assert ctx2.state.name == "CALL_ENDED_WRONG_NUMBER"
+print("PASSED - call correctly terminated immediately on wrong number.")
 
 
 print("\n\n--- BONUS: testing refusal after amount is told ---")
@@ -69,7 +66,9 @@ print("BOT:", process_user_reply(ctx4, "kya bol rahe ho?")) # first retry
 print("USER: kuch samajh nahi aaya")
 print("BOT:", process_user_reply(ctx4, "kuch samajh nahi aaya")) # second retry
 print("USER: kya bola?")
-print("BOT:", process_user_reply(ctx4, "kya bola?")) # ends call
+print("BOT:", process_user_reply(ctx4, "kya bola?")) # third retry
+print("USER: dobara boliye?")
+print("BOT:", process_user_reply(ctx4, "dobara boliye?")) # ends call
 print("Final state:", ctx4.state)
 assert ctx4.state.value == "call_ended_unclear"
 print("PASSED - call correctly ended on repeated unclear input.")
