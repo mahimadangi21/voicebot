@@ -3277,31 +3277,31 @@ export default function VoiceBot() {
               transition={{ duration: 0.3 }}
               className="absolute inset-0 flex flex-col items-center justify-center p-6 z-10"
             >
-              <div className={`w-full max-w-[480px] border rounded-[28px] p-8 shadow-2xl relative overflow-hidden transition-colors duration-300 ${
+              <div className={`w-full max-w-[440px] border rounded-[24px] py-5 px-6 shadow-2xl relative overflow-hidden transition-colors duration-300 ${
                 isDarkMode ? 'bg-[#111827] border-slate-800' : 'bg-white border-slate-205 shadow-2xl shadow-slate-100'
               }`}>
                 {/* Background lighting */}
                 <div className="absolute top-[-50px] right-[-50px] w-[180px] h-[180px] bg-[#4F46E5]/10 rounded-full blur-[40px]"></div>
 
-                <div className="text-center mb-8">
-                  <div className={`inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4 border transition-colors ${
+                <div className="text-center mb-4">
+                  <div className={`inline-flex items-center justify-center w-10 h-10 rounded-xl mb-2 border transition-colors ${
                     isDarkMode ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-650'
                   }`}>
-                    <Phone className="w-6 h-6" />
+                    <Phone className="w-5 h-5" />
                   </div>
-                  <h2 className={`text-2xl font-bold tracking-wide transition-colors ${
+                  <h2 className={`text-xl font-bold tracking-wide transition-colors ${
                     isDarkMode ? 'text-white' : 'text-[#0F172A]'
                   }`}>Outbound AI Dialer</h2>
-                  <p className={`text-xs mt-2 leading-relaxed ${
+                  <p className={`text-[11px] mt-1 leading-relaxed ${
                     isDarkMode ? 'text-slate-400' : 'text-slate-500'
                   }`}>
                     Trigger an automated Hindi/Hinglish collection call with customized parameters.
                   </p>
                 </div>
 
-                <form onSubmit={handleInitiateCall} className="space-y-4">
+                <form onSubmit={handleInitiateCall} className="space-y-3">
                   <div>
-                    <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                    <label className={`block text-[9px] font-bold uppercase tracking-widest mb-1 ml-1 transition-colors ${
                       isDarkMode ? 'text-slate-400' : 'text-slate-500'
                     }`}>
                       Customer Name
@@ -3313,7 +3313,7 @@ export default function VoiceBot() {
                         setCustomerName(e.target.value);
                         setNameError(null);
                       }}
-                      className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold ${
+                      className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none transition-all font-semibold ${
                         isDarkMode 
                           ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
                           : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
@@ -3321,7 +3321,7 @@ export default function VoiceBot() {
                       placeholder="e.g. Mahima Dangi"
                     />
                     {nameError && (
-                      <p className="text-red-400 text-xs mt-1.5 ml-1 flex items-center gap-1">
+                      <p className="text-red-400 text-[11px] mt-1 ml-1 flex items-center gap-1">
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {nameError}
                       </p>
                     )}
@@ -3329,7 +3329,7 @@ export default function VoiceBot() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                      <label className={`block text-[9px] font-bold uppercase tracking-widest mb-1 ml-1 transition-colors ${
                         isDarkMode ? 'text-slate-400' : 'text-slate-500'
                       }`}>
                         Loan Balance (INR)
@@ -3341,7 +3341,7 @@ export default function VoiceBot() {
                           setAmount(e.target.value);
                           setAmountError(null);
                         }}
-                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold ${
+                        className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none transition-all font-semibold ${
                           isDarkMode 
                             ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
                             : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
@@ -3349,13 +3349,13 @@ export default function VoiceBot() {
                         placeholder="e.g. 5000"
                       />
                       {amountError && (
-                        <p className="text-red-400 text-xs mt-1.5 ml-1 flex items-center gap-1">
+                        <p className="text-red-400 text-[11px] mt-1 ml-1 flex items-center gap-1">
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {amountError}
                         </p>
                       )}
                     </div>
                     <div>
-                      <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                      <label className={`block text-[9px] font-bold uppercase tracking-widest mb-1 ml-1 transition-colors ${
                         isDarkMode ? 'text-slate-400' : 'text-slate-500'
                       }`}>
                         Bank Name
@@ -3367,7 +3367,7 @@ export default function VoiceBot() {
                           setBankName(e.target.value);
                           setBankError(null);
                         }}
-                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold ${
+                        className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none transition-all font-semibold ${
                           isDarkMode 
                             ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
                             : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
@@ -3375,7 +3375,7 @@ export default function VoiceBot() {
                         placeholder="e.g. ICICI"
                       />
                       {bankError && (
-                        <p className="text-red-400 text-xs mt-1.5 ml-1 flex items-center gap-1">
+                        <p className="text-red-400 text-[11px] mt-1 ml-1 flex items-center gap-1">
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {bankError}
                         </p>
                       )}
@@ -3384,7 +3384,7 @@ export default function VoiceBot() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                      <label className={`block text-[9px] font-bold uppercase tracking-widest mb-1 ml-1 transition-colors ${
                         isDarkMode ? 'text-slate-400' : 'text-slate-500'
                       }`}>
                         Phone Number
@@ -3396,20 +3396,20 @@ export default function VoiceBot() {
                           setPhone(e.target.value);
                           setPhoneError(null);
                         }}
-                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold ${
+                        className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none transition-all font-semibold ${
                           isDarkMode 
                             ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
                             : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
                         } ${phoneError ? 'border-red-500 focus:border-red-500' : ''}`}
                       />
                       {phoneError && (
-                        <p className="text-red-400 text-xs mt-1.5 ml-1 flex items-center gap-1">
+                        <p className="text-red-400 text-[11px] mt-1 ml-1 flex items-center gap-1">
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {phoneError}
                         </p>
                       )}
                     </div>
                     <div>
-                      <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                      <label className={`block text-[9px] font-bold uppercase tracking-widest mb-1 ml-1 transition-colors ${
                         isDarkMode ? 'text-slate-400' : 'text-slate-500'
                       }`}>
                         Due Date
@@ -3422,7 +3422,7 @@ export default function VoiceBot() {
                           setDateError(null);
                           setDateWarning(null);
                         }}
-                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold ${
+                        className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none transition-all font-semibold ${
                           isDarkMode 
                             ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
                             : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
@@ -3436,12 +3436,12 @@ export default function VoiceBot() {
                         placeholder="e.g. June 15, 2026"
                       />
                       {dateError && (
-                        <p className="text-red-400 text-xs mt-1.5 ml-1 flex items-center gap-1">
+                        <p className="text-red-400 text-[11px] mt-1 ml-1 flex items-center gap-1">
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {dateError}
                         </p>
                       )}
                       {dateWarning && !dateError && (
-                        <p className="text-amber-400 text-xs mt-1.5 ml-1 flex items-center gap-1">
+                        <p className="text-amber-400 text-[11px] mt-1 ml-1 flex items-center gap-1">
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {dateWarning}
                         </p>
                       )}
@@ -3449,15 +3449,10 @@ export default function VoiceBot() {
                   </div>
 
                   {/* Voice Configuration */}
-                  <div className="mt-6 border-t border-slate-800/40 pt-5">
-                    <h4 className={`text-xs font-bold uppercase tracking-widest mb-3 ml-1 ${
-                      isDarkMode ? 'text-indigo-400' : 'text-indigo-600'
-                    }`}>
-                      Voice Configuration
-                    </h4>
+                  <div className="mt-3.5 border-t border-slate-800/40 pt-3">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                        <label className={`block text-[9px] font-bold uppercase tracking-widest mb-1 ml-1 transition-colors ${
                           isDarkMode ? 'text-slate-400' : 'text-slate-500'
                         }`}>
                           Voice Engine
@@ -3466,7 +3461,7 @@ export default function VoiceBot() {
                           value={voiceEngine}
                           onChange={(e) => setVoiceEngine(e.target.value)}
                           disabled={isProcessing || isCallActive}
-                          className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold cursor-pointer ${
+                          className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none transition-all font-semibold cursor-pointer ${
                             isDarkMode 
                               ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
                               : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
@@ -3477,7 +3472,7 @@ export default function VoiceBot() {
                         </select>
                       </div>
                       <div>
-                        <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                        <label className={`block text-[9px] font-bold uppercase tracking-widest mb-1 ml-1 transition-colors ${
                           isDarkMode ? 'text-slate-400' : 'text-slate-500'
                         }`}>
                           Voice
@@ -3486,7 +3481,7 @@ export default function VoiceBot() {
                           value={voiceGender}
                           onChange={(e) => setVoiceGender(e.target.value)}
                           disabled={isProcessing || isCallActive}
-                          className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold cursor-pointer ${
+                          className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none transition-all font-semibold cursor-pointer ${
                             isDarkMode 
                               ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
                               : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
@@ -3511,7 +3506,7 @@ export default function VoiceBot() {
                   <button
                     type="submit"
                     disabled={isProcessing}
-                    className="w-full mt-6 bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] hover:from-[#5A52FF] hover:to-[#8B4CFF] text-white font-bold py-4 px-6 rounded-xl transition duration-150 transform active:scale-[0.98] shadow-lg shadow-indigo-600/10 flex items-center justify-center gap-2 tracking-widest uppercase text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full mt-4.5 bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] hover:from-[#5A52FF] hover:to-[#8B4CFF] text-white font-bold py-2.5 px-5 rounded-xl transition duration-150 transform active:scale-[0.98] shadow-lg shadow-indigo-600/10 flex items-center justify-center gap-2 tracking-widest uppercase text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isProcessing ? (
                       <>

@@ -694,6 +694,49 @@ def get_audio_duration(filepath: str) -> float:
         except Exception:
             return 0.0
 
+# Cached last working key
+_cached_working_key = None
+
+def get_all_sarvam_keys() -> list[str]:
+    keys = []
+    
+    # helper to clean and add key
+    def add_key(val):
+        if not val:
+            return
+        # split by comma in case multiple keys are in a single variable
+        for part in val.split(","):
+            part = part.strip()
+            # Remove any wrapping quotes
+            if (part.startswith('"') and part.endswith('"')) or (part.startswith("'") and part.endswith("'")):
+                part = part[1:-1].strip()
+            if part and part not in keys and "INVALID_KEY" not in part:
+                keys.append(part)
+
+    # 1. Check all environment variables matching SARVAM_API_KEY.*
+    for k, v in sorted(os.environ.items()):
+        if k.startswith("SARVAM_API_KEY"):
+            add_key(v)
+
+    # 2. Also check .env file directly if it exists, to ensure we get any keys that were not loaded
+    env_path = ".env"
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    # Skip comments or empty lines
+                    if not line or line.startswith("#"):
+                        continue
+                    if line.startswith("SARVAM_API_KEY"):
+                        parts = line.split("=", 1)
+                        if len(parts) == 2:
+                            add_key(parts[1].strip())
+        except Exception as e:
+            print(f"[Key Manager Error] Error reading .env directly: {e}")
+
+    return keys
+
 def speak_with_sarvam(text: str, filename: str, voice: str = None) -> str:
     """
     Synthesizes speech using Sarvam AI's REST API.
@@ -707,60 +750,91 @@ def speak_with_sarvam(text: str, filename: str, voice: str = None) -> str:
     To change the voice, update the DEFAULT_* constants at the top of this file
     and document the change with a listening test against the reference audio files.
     """
-    api_key = os.environ.get("SARVAM_API_KEY")
-    if not api_key:
-        raise ValueError("SARVAM_API_KEY environment variable is not configured.")
-
-    url = "https://api.sarvam.ai/text-to-speech"
-    headers = {
-        "api-subscription-key": api_key,
-        "Content-Type": "application/json"
-    }
-
-    # Use the voice parameter if specified, otherwise default speaker
-    actual_speaker = voice if voice else DEFAULT_SPEAKER
-    payload = {
-        "text": text,
-        "speaker": actual_speaker,
-        "target_language_code": DEFAULT_LANG,
-        "model": DEFAULT_MODEL,
-        "pace": DEFAULT_PACE,
-    }
-
-    # Ensure output directory exists
-    output_dir = os.path.dirname(filename)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-
-    print(f"[TTS Attempt] Attempting Sarvam AI with speaker '{actual_speaker}'...")
-    print(f"[TTS Request Payload] Text: '{text}' | Payload: {payload}")
+    global _cached_working_key
     
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
-    except requests.exceptions.RequestException as re:
-        print(f"[TTS Connection Error] Sarvam AI API request failed: {re}")
-        raise
-    except Exception as e:
-        print(f"[TTS Connection Error] Unexpected error during Sarvam AI API request: {e}")
-        raise
-
-    if response.status_code != 200:
-        print(f"[TTS API Failure Details] Status Code: {response.status_code} | Reason: {response.reason} | Response Body: {response.text}")
-        raise RuntimeError(f"Sarvam AI TTS API failed with status code {response.status_code}: {response.text}")
+    # 1. Load all keys
+    all_keys = get_all_sarvam_keys()
+    if not all_keys:
+        raise ValueError("No SARVAM_API_KEY configured in environment or .env file.")
+        
+    # Re-order keys to try the cached working key first if it exists
+    keys_to_try = list(all_keys)
+    if _cached_working_key and _cached_working_key in keys_to_try:
+        keys_to_try.remove(_cached_working_key)
+        keys_to_try.insert(0, _cached_working_key)
+        
+    last_error = None
     
-    try:
-        data = response.json()
-        audio_content = "".join(data["audios"])
-        audio_bytes = base64.b64decode(audio_content)
-    except Exception as e:
-        print(f"[TTS Parsing Error] Failed to parse or decode response data: {e}")
-        print(f"[TTS Parsing Error] Response Text: {response.text}")
-        raise
-
-    with open(filename, "wb") as f:
-        f.write(audio_bytes)
-
-    return filename
+    for idx, key in enumerate(keys_to_try):
+        masked_key = f"{key[:6]}...{key[-4:]}" if len(key) > 10 else f"KeyIndex_{idx}"
+        
+        url = "https://api.sarvam.ai/text-to-speech"
+        headers = {
+            "api-subscription-key": key,
+            "Content-Type": "application/json"
+        }
+        
+        # Use the voice parameter if specified, otherwise default speaker
+        actual_speaker = voice if voice else DEFAULT_SPEAKER
+        payload = {
+            "text": text,
+            "speaker": actual_speaker,
+            "target_language_code": DEFAULT_LANG,
+            "model": DEFAULT_MODEL,
+            "pace": DEFAULT_PACE,
+        }
+        
+        # Ensure output directory exists
+        output_dir = os.path.dirname(filename)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            
+        print(f"[TTS Attempt] Attempting Sarvam AI with speaker '{actual_speaker}' using key: {masked_key}...")
+        
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=10)
+            
+            # Check for failover-triggering error statuses
+            if response.status_code in (401, 402, 429) or response.status_code != 200:
+                err_msg = f"Key {masked_key} failed with status code {response.status_code}: {response.text}"
+                print(f"[Sarvam Failover] {err_msg}")
+                last_error = RuntimeError(err_msg)
+                if idx < len(keys_to_try) - 1:
+                    next_key = keys_to_try[idx + 1]
+                    next_masked = f"{next_key[:6]}...{next_key[-4:]}" if len(next_key) > 10 else f"KeyIndex_{idx + 1}"
+                    print(f"[Sarvam Failover] Automatically switching from key {masked_key} to next key {next_masked}")
+                continue
+                
+            data = response.json()
+            audio_content = "".join(data["audios"])
+            audio_bytes = base64.b64decode(audio_content)
+            
+            with open(filename, "wb") as f:
+                f.write(audio_bytes)
+                
+            # Success! Cache the key.
+            if _cached_working_key != key:
+                print(f"[Sarvam Success] Key {masked_key} succeeded. Caching as active working key.")
+                _cached_working_key = key
+                
+            return filename
+            
+        except (requests.exceptions.RequestException, Exception) as e:
+            err_msg = f"Key {masked_key} encountered connection/unexpected error: {e}"
+            print(f"[Sarvam Failover] {err_msg}")
+            last_error = e
+            if idx < len(keys_to_try) - 1:
+                next_key = keys_to_try[idx + 1]
+                next_masked = f"{next_key[:6]}...{next_key[-4:]}" if len(next_key) > 10 else f"KeyIndex_{idx + 1}"
+                print(f"[Sarvam Failover] Automatically switching from key {masked_key} to next key {next_masked}")
+            continue
+            
+    # All keys exhausted
+    print("[Sarvam Exhaustion] All configured Sarvam API keys were tried and failed.")
+    if last_error:
+        raise RuntimeError(f"All Sarvam API keys exhausted. Last error: {last_error}")
+    else:
+        raise RuntimeError("All Sarvam API keys exhausted.")
 
 def speak_with_gtts(text: str, filename: str, lang: str = "hi") -> str:
     """
@@ -828,25 +902,12 @@ def speak(text: str, filename: str, engine: str = "sarvam", voice: str = "male")
     devanagari_text = hinglish_to_devanagari(text)
     
     if engine.lower() == "sarvam":
-        api_key = os.environ.get("SARVAM_API_KEY")
+        all_keys = get_all_sarvam_keys()
         sarvam_voice = "rohan" if voice.lower() == "male" else "divya"
         fallback_edge_voice = "hi-IN-MadhurNeural" if voice.lower() == "male" else "hi-IN-SwaraNeural"
         
-        if not api_key or api_key == "":
-            reason = "SARVAM_API_KEY environment variable is empty or missing"
-            print(f"[TTS Fallback Triggered] Engine: Edge-TTS (Reason: {reason})")
-            try:
-                spoken_text = devanagari_text
-                speak_with_edge_tts(devanagari_text, filename, voice=fallback_edge_voice)
-                selected_engine = "Edge-TTS"
-                print(f"[TTS Engine Success] Synthesized successfully with Edge-TTS fallback: '{filename}'")
-            except Exception as edge_err:
-                print(f"[TTS Fallback Triggered] Engine: gTTS (Reason: Edge-TTS failed: {edge_err})")
-                speak_with_gtts(devanagari_text, filename)
-                selected_engine = "gTTS"
-                print(f"[TTS Engine Success] Synthesized successfully with gTTS fallback: '{filename}'")
-        elif "INVALID_KEY" in api_key:
-            reason = f"SARVAM_API_KEY contains INVALID_KEY pattern ({api_key})"
+        if not all_keys:
+            reason = "No Sarvam API keys are configured in environment or .env"
             print(f"[TTS Fallback Triggered] Engine: Edge-TTS (Reason: {reason})")
             try:
                 spoken_text = devanagari_text
