@@ -221,11 +221,19 @@ def reply(req: ReplyRequest):
     if is_call_over(ctx):
         _save_history(sid, ctx)
 
+    payment_link = None
+    if ctx.state == State.PAYMENT_CONFIRM or ctx.state.name == "PAYMENT_CONFIRM":
+        import urllib.parse
+        safe_name = urllib.parse.quote(ctx.name)
+        safe_bank = urllib.parse.quote(ctx.bank_name)
+        payment_link = f"https://pay.bankconnect.mock/pay/{sid}?amt={ctx.amount}&cust={safe_name}&bk={safe_bank}"
+
     return {
         "bot_text": bot_text,
         "audio_url": f"/audio/{fname}",
         "state": ctx.state.name,
-        "is_terminal": is_call_over(ctx)
+        "is_terminal": is_call_over(ctx),
+        "payment_link": payment_link
     }
 
 @app.post("/api/tts")

@@ -1645,6 +1645,11 @@ export default function VoiceBot() {
   const [isTerminal, setIsTerminal] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
 
+  // Payment link state
+  const [paymentLink, setPaymentLink] = useState('');
+  const [paymentLinkSent, setPaymentLinkSent] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   // Audio / Speech State
   const [isSpeaking, _setIsSpeaking] = useState(false);
   const [isListening, _setIsListening] = useState(false);
@@ -2348,6 +2353,9 @@ export default function VoiceBot() {
     setIsTerminal(false);
     setCallDuration(0);
     setCallSummary(null);
+    setPaymentLink('');
+    setPaymentLinkSent(false);
+    setCopied(false);
     setIsProcessing(true);
     hasMicErrorRef.current = false;
     consecutiveSpeechErrorsRef.current = 0;
@@ -2651,6 +2659,12 @@ export default function VoiceBot() {
         setCurrentState(mockResult.state);
         currentStateRef.current = mockResult.state;
 
+        if (mockResult.state === 'PAYMENT_CONFIRM') {
+          const generatedLink = `https://pay.bankconnect.mock/pay/mock_${Date.now().toString().slice(-4)}?amt=${amount}&cust=${encodeURIComponent(customerName)}&bk=${encodeURIComponent(bankName)}`;
+          setPaymentLink(generatedLink);
+          setPaymentLinkSent(true);
+        }
+
         if (mockResult.is_terminal) {
           pendingTerminalStateRef.current = mockResult.state;
         } else {
@@ -2734,6 +2748,15 @@ export default function VoiceBot() {
 
           setCurrentState(data.state);
           currentStateRef.current = data.state;
+
+          if (data.payment_link) {
+            setPaymentLink(data.payment_link);
+            setPaymentLinkSent(true);
+          } else if (data.state === 'PAYMENT_CONFIRM') {
+            const generatedLink = `https://pay.bankconnect.mock/pay/${sessionIdRef.current || 'active'}?amt=${amount}&cust=${encodeURIComponent(customerName)}&bk=${encodeURIComponent(bankName)}`;
+            setPaymentLink(generatedLink);
+            setPaymentLinkSent(true);
+          }
 
           if (data.is_terminal) {
             pendingTerminalStateRef.current = data.state;
@@ -3182,6 +3205,9 @@ export default function VoiceBot() {
     setIsThinking(false);
     setCallDuration(0);
     setCallSummary(null);
+    setPaymentLink('');
+    setPaymentLinkSent(false);
+    setCopied(false);
     setNameError(null);
     setAmountError(null);
     setBankError(null);
@@ -3646,6 +3672,85 @@ export default function VoiceBot() {
                     </p>
                   </div>
 
+                  {/* Dynamic payment link display during active call */}
+                  <AnimatePresence>
+                    {paymentLink && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                        className={`w-full max-w-[340px] mt-6 p-4 border rounded-2xl transition-colors duration-300 shadow-lg z-20 ${
+                          isDarkMode
+                            ? 'bg-[#111827]/80 border-slate-800 text-white'
+                            : 'bg-white border-slate-200 text-slate-800 shadow-slate-100'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-indigo-400">
+                            Demo Payment Link
+                          </span>
+                          <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center gap-1">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                            Payment Link Sent
+                          </span>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            readOnly
+                            value={paymentLink}
+                            className={`flex-1 border rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none transition-all font-mono select-all ${
+                              isDarkMode
+                                ? 'bg-[#070B1A] text-slate-350 border-slate-800'
+                                : 'bg-slate-50 text-slate-650 border-slate-200'
+                            }`}
+                          />
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(paymentLink);
+                              setCopied(true);
+                              setTimeout(() => setCopied(false), 2000);
+                            }}
+                            className={`p-1.5 border rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:scale-105 active:scale-95 ${
+                              copied
+                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                : isDarkMode
+                                ? 'bg-slate-900 border-slate-850 text-slate-400 hover:text-white'
+                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                            }`}
+                            title="Copy Link"
+                          >
+                            {copied ? (
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            ) : (
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                              </svg>
+                            )}
+                          </button>
+                          <a
+                            href={paymentLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`p-1.5 border rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:scale-105 active:scale-95 ${
+                              isDarkMode
+                                ? 'bg-[#1E2940] border-slate-800 text-indigo-400 hover:text-indigo-300'
+                                : 'bg-indigo-50 border-indigo-100 text-indigo-650 hover:bg-indigo-100/60'
+                            }`}
+                            title="Open Link"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </a>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
                   {/* Large Waveform Voice Visualizer */}
                   <div className="w-full max-w-[280px] h-12 flex items-center justify-center gap-1 mt-8 overflow-hidden">
                     {Array.from({ length: 16 }).map((_, i) => (
@@ -3911,6 +4016,94 @@ export default function VoiceBot() {
                   }`}>
                     <span className={`text-[9px] uppercase font-bold tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Call Summary Log</span>
                     <p className={`text-xs leading-relaxed mt-1.5 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{callSummary.summaryText}</p>
+                  </div>
+
+                  {/* Demo Payment Link Section */}
+                  <div className={`border p-4 rounded-xl transition-colors duration-300 ${
+                    isDarkMode ? 'bg-[#070B1A] border-slate-850' : 'bg-slate-50 border-slate-150'
+                  }`}>
+                    <div className="flex items-center justify-between mb-2.5">
+                      <span className={`text-[9px] uppercase font-bold tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Demo Payment Link
+                      </span>
+                      {paymentLinkSent ? (
+                        <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-450 flex items-center gap-1">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                          Payment Link Sent
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center gap-1">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
+                            Not Sent
+                          </span>
+                          <button
+                            onClick={() => {
+                              const generatedLink = `https://pay.bankconnect.mock/pay/${sessionId || 'summary'}?amt=${amount}&cust=${encodeURIComponent(customerName)}&bk=${encodeURIComponent(bankName)}`;
+                              setPaymentLink(generatedLink);
+                              setPaymentLinkSent(true);
+                            }}
+                            className="px-2.5 py-0.5 text-[9px] font-bold rounded bg-indigo-650 hover:bg-indigo-700 text-white cursor-pointer transition-colors active:scale-95"
+                          >
+                            Send Again
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={paymentLink || `https://pay.bankconnect.mock/pay/${sessionId || 'summary'}?amt=${amount}&cust=${encodeURIComponent(customerName)}&bk=${encodeURIComponent(bankName)}`}
+                        className={`flex-1 border rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none transition-all font-mono select-all ${
+                          isDarkMode
+                            ? 'bg-[#070B1A] text-slate-350 border-slate-800'
+                            : 'bg-slate-50 text-slate-650 border-slate-200'
+                        }`}
+                      />
+                      <button
+                        onClick={() => {
+                          const link = paymentLink || `https://pay.bankconnect.mock/pay/${sessionId || 'summary'}?amt=${amount}&cust=${encodeURIComponent(customerName)}&bk=${encodeURIComponent(bankName)}`;
+                          navigator.clipboard.writeText(link);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }}
+                        className={`p-1.5 border rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:scale-105 active:scale-95 ${
+                          copied
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-405'
+                            : isDarkMode
+                            ? 'bg-slate-900 border-slate-850 text-slate-400 hover:text-white'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                        title="Copy Link"
+                      >
+                        {copied ? (
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                          </svg>
+                        )}
+                      </button>
+                      <a
+                        href={paymentLink || `https://pay.bankconnect.mock/pay/${sessionId || 'summary'}?amt=${amount}&cust=${encodeURIComponent(customerName)}&bk=${encodeURIComponent(bankName)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`p-1.5 border rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:scale-105 active:scale-95 ${
+                          isDarkMode
+                            ? 'bg-[#1E2940] border-slate-800 text-indigo-400 hover:text-indigo-300'
+                            : 'bg-indigo-50 border-indigo-100 text-indigo-650 hover:bg-indigo-100/60'
+                        }`}
+                        title="Open Link"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    </div>
                   </div>
 
                   {/* Actions buttons */}
