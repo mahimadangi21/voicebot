@@ -909,7 +909,7 @@ def speak(text: str, filename: str, engine: str = "sarvam", voice: str = "male")
     
     if engine.lower() == "sarvam":
         all_keys = get_all_sarvam_keys()
-        sarvam_voice = "rohan" if voice.lower() == "male" else "divya"
+        sarvam_voice = "rohan" if voice.lower() == "male" else "ritu"
         fallback_edge_voice = "hi-IN-MadhurNeural" if voice.lower() == "male" else "hi-IN-SwaraNeural"
         
         if not all_keys:
