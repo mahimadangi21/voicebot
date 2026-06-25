@@ -3800,29 +3800,18 @@ export default function VoiceBot() {
                       {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                     </button>
 
-                    {/* Voice Trigger button */}
+                    {/* Prominent Red End Call Button */}
                     {!isTerminal && (
                       <button
-                        onClick={toggleListening}
-                        disabled={isSpeaking || isThinking || isOnHold}
-                        className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed shadow-xl cursor-pointer ${
-                          isListening
-                            ? 'bg-red-600 text-white shadow-red-650/25 ring-4 ring-red-500/20 animate-pulse'
-                            : 'bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] text-white shadow-indigo-500/20'
-                        }`}
+                        onClick={handleEndCall}
+                        title="End Call"
+                        className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-750 text-white flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-lg shadow-red-650/20"
                       >
-                        {isListening ? (
-                          <div className="relative flex items-center justify-center">
-                            <span className="animate-ping absolute inline-flex h-10 w-10 rounded-full bg-red-400 opacity-30"></span>
-                            <Phone className="w-6 h-6 relative z-10" />
-                          </div>
-                        ) : (
-                          <Mic className="w-6 h-6" />
-                        )}
+                        <PhoneOff className="w-6 h-6" />
                       </button>
                     )}
 
-                    {/* Hold Button */}
+                    {/* Hold / Pause Button */}
                     <button
                       onClick={handleHoldToggle}
                       title={isOnHold ? "Resume Call" : "Put on Hold"}
@@ -3834,19 +3823,8 @@ export default function VoiceBot() {
                           : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 shadow-sm'
                       }`}
                     >
-                      <Pause className="w-5 h-5" />
+                      {isOnHold ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
                     </button>
-
-                    {/* Prominent Red End Call Button */}
-                    {!isTerminal && (
-                      <button
-                        onClick={handleEndCall}
-                        title="End Call"
-                        className="w-12 h-12 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-lg shadow-red-600/25"
-                      >
-                        <PhoneOff className="w-5 h-5" />
-                      </button>
-                    )}
                   </div>
                 </div>
               </section>
