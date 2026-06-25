@@ -623,6 +623,148 @@ const extractCallbackTime = (text) => {
   return null;
 };
 
+const formatDate = (date) => {
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  return `${date.getDate()} ${months[date.getMonth()]}`;
+};
+
+const normalizeRelativeDate = (text) => {
+  if (!text) return null;
+  const clean = text.toLowerCase().trim();
+  const now = new Date();
+
+  // 1. aaj / today / aaj shaam / today evening
+  if (clean.includes("aaj") || clean.includes("today")) {
+    return formatDate(now);
+  }
+  
+  // 2. parso / parson / 2 din baad / in 2 days / do din baad / day after tomorrow
+  if (clean.includes("parso") || clean.includes("parson") || clean.includes("2 din baad") || clean.includes("do din baad") || clean.includes("day after tomorrow")) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() + 2);
+    return formatDate(dt);
+  }
+
+  // 3. kal / tomorrow
+  if (clean.includes("kal") || clean.includes("tomorrow")) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() + 1);
+    return formatDate(dt);
+  }
+
+  // 4. 3 din baad / teen din baad / in 3 days
+  if (clean.includes("3 din baad") || clean.includes("teen din baad") || clean.includes("in 3 days")) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() + 3);
+    return formatDate(dt);
+  }
+
+  // 5. next week / agle hafte / agle week
+  if (clean.includes("next week") || clean.includes("agle hafte") || clean.includes("agle week")) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() + 7);
+    return formatDate(dt);
+  }
+
+  // 6. Weekdays mapping
+  const weekdaysEn = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+  const weekdaysHi = ["somwar", "mangalwar", "budhwar", "guruwar", "shukrawar", "shaniwar", "ravivar"];
+  const weekdaysHiAlt = ["somvaar", "mangalvaar", "budhvaar", "guruvaar", "shukrawaar", "shaniwaar", "ravivaar"];
+  const weekdaysHiDev = ["सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार"];
+
+  for (let i = 0; i < 7; i++) {
+    if (clean.includes(weekdaysEn[i]) || 
+        clean.includes(weekdaysHi[i]) || 
+        clean.includes(weekdaysHiAlt[i]) || 
+        clean.includes(weekdaysHiDev[i])) {
+      const currentWeekday = now.getDay(); // 0 is Sunday, 1 is Monday, etc.
+      // Convert JS Sunday=0, Monday=1 to Monday=0, Sunday=6
+      const currentWeekdayNormalized = currentWeekday === 0 ? 6 : currentWeekday - 1;
+      let daysAhead = (i - currentWeekdayNormalized) % 7;
+      if (daysAhead <= 0) daysAhead += 7; // If today is Monday, Monday means next Monday
+      const dt = new Date(now);
+      dt.setDate(now.getDate() + daysAhead);
+      return formatDate(dt);
+    }
+  }
+
+  // Check Devanagari relative expressions
+  if (clean.includes("परसों") || clean.includes("परसो")) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() + 2);
+    return formatDate(dt);
+  }
+  if (clean.includes("कल")) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() + 1);
+    return formatDate(dt);
+  }
+
+  return null;
+};
+
+const extractSpecificDate = (text) => {
+  if (!text) return null;
+  const clean = text.toLowerCase().trim();
+  const months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december",
+                  "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const monthsPattern = months.join("|");
+
+  // Try pattern: 27 June, 27th June, June 27
+  const pattern1 = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s*(${monthsPattern})\\b`, "i");
+  let m = clean.match(pattern1);
+  if (m) {
+    const day = parseInt(m[1], 10);
+    const monthRaw = m[2];
+    const fullMonth = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+      .find(mon => mon.toLowerCase().startsWith(monthRaw));
+    if (fullMonth) {
+      return `${day} ${fullMonth}`;
+    }
+  }
+
+  // Try pattern: June 27, June 27th
+  const pattern2 = new RegExp(`\\b(${monthsPattern})\\s*(\\d{1,2})(?:st|nd|rd|th)?\\b`, "i");
+  m = clean.match(pattern2);
+  if (m) {
+    const day = parseInt(m[2], 10);
+    const monthRaw = m[1];
+    const fullMonth = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+      .find(mon => mon.toLowerCase().startsWith(monthRaw));
+    if (fullMonth) {
+      return `${day} ${fullMonth}`;
+    }
+  }
+
+  // Try pattern: 28 tareekh ko, 28 tarikh
+  const pattern3 = /\b(\d{1,2})\s*(?:tareekh|tarikh)\b/i;
+  m = clean.match(pattern3);
+  if (m) {
+    const day = parseInt(m[1], 10);
+    const now = new Date();
+    if (day >= now.getDate()) {
+      return `${day} ${["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][now.getMonth()]}`;
+    } else {
+      let nextMonth = now.getMonth() + 1;
+      if (nextMonth > 11) {
+        nextMonth = 0;
+      }
+      return `${day} ${["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][nextMonth]}`;
+    }
+  }
+
+  return null;
+};
+
+const getPaymentConfirmText = (userText) => {
+  const normalizedDate = normalizeRelativeDate(userText) || extractSpecificDate(userText);
+  if (normalizedDate) {
+    return `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`;
+  } else {
+    return "Theek hai, maine aapki payment commitment note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.";
+  }
+};
+
 const detectIntent = (text, customerName = null) => {
   const clean = text.toLowerCase().trim();
 
@@ -1080,14 +1222,10 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   // Global check for promise to pay in non-terminal states
   if (intent === 'PROMISE_TO_PAY' && !terminalStates.includes(currentState)) {
     if (unclearRetriesRef) unclearRetriesRef.current = 0;
-    const userTextLower = userText.toLowerCase();
-    const dateKeywords = ["kal", "parso", "parson", "aaj shaam", "kal subah", "kal dopahar", "kal shaam", "parso subah", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
-                          "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "today", "tomorrow", "2 din baad", "3 tareekh ko", "mahine ke end mein"];
-    const devanagariKeywords = ["कल", "परसो", "परसों", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"];
-    const hasDateWord = dateKeywords.some(kw => userTextLower.includes(kw)) || devanagariKeywords.some(kw => userText.includes(kw));
-    if (hasDateWord) {
+    const normalizedDate = normalizeRelativeDate(userText) || extractSpecificDate(userText);
+    if (normalizedDate) {
       return {
-        bot_text: `Theek hai, maine payment ki date ${userText} system mein register kar li hai. Kripya tab tak payment kar dijiyega. Dhanyavaad!`,
+        bot_text: `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`,
         state: 'CALL_ENDED_SUCCESS',
         is_terminal: true,
         intent: intent,
@@ -1240,14 +1378,10 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
         emotion: 'Apologetic'
       };
     } else if (intent === 'PROMISE_TO_PAY') {
-      const userTextLower = userText.toLowerCase();
-      const dateKeywords = ["kal", "parso", "parson", "aaj shaam", "kal subah", "kal dopahar", "kal shaam", "parso subah", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
-                            "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "today", "tomorrow", "2 din baad", "3 tareekh ko", "mahine ke end mein"];
-      const devanagariKeywords = ["कल", "परसो", "परसों", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"];
-      const hasDateWord = dateKeywords.some(kw => userTextLower.includes(kw)) || devanagariKeywords.some(kw => userText.includes(kw));
-      if (hasDateWord) {
+      const normalizedDate = normalizeRelativeDate(userText) || extractSpecificDate(userText);
+      if (normalizedDate) {
         return {
-          bot_text: `Theek hai, maine payment ki date ${userText} system mein register kar li hai. Kripya tab tak payment kar dijiyega. Dhanyavaad!`,
+          bot_text: `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`,
           state: 'CALL_ENDED_SUCCESS',
           is_terminal: true,
           intent: intent,
@@ -1343,14 +1477,10 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
         emotion: 'Apologetic'
       };
     } else if (intent === 'PROMISE_TO_PAY') {
-      const userTextLower = userText.toLowerCase();
-      const dateKeywords = ["kal", "parso", "parson", "aaj shaam", "kal subah", "kal dopahar", "kal shaam", "parso subah", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
-                            "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "today", "tomorrow", "2 din baad", "3 tareekh ko", "mahine ke end mein"];
-      const devanagariKeywords = ["कल", "परसो", "परसों", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"];
-      const hasDateWord = dateKeywords.some(kw => userTextLower.includes(kw)) || devanagariKeywords.some(kw => userText.includes(kw));
-      if (hasDateWord) {
+      const normalizedDate = normalizeRelativeDate(userText) || extractSpecificDate(userText);
+      if (normalizedDate) {
         return {
-          bot_text: `Theek hai, maine payment ki date ${userText} system mein register kar li hai. Kripya tab tak payment kar dijiyega. Dhanyavaad!`,
+          bot_text: `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`,
           state: 'CALL_ENDED_SUCCESS',
           is_terminal: true,
           intent: intent,
@@ -1449,8 +1579,12 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   }
 
   if (currentState === 'ASK_PAYMENT_DATE') {
+    const normalizedDate = normalizeRelativeDate(userText) || extractSpecificDate(userText);
+    const botText = normalizedDate 
+      ? `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`
+      : `Theek hai, maine aapki payment commitment note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`;
     return {
-      bot_text: `Theek hai, maine payment ki date ${userText} system mein register kar li hai. Kripya tab tak payment kar dijiyega. Dhanyavaad!`,
+      bot_text: botText,
       state: 'CALL_ENDED_SUCCESS',
       is_terminal: true,
       intent: intent,
@@ -1557,8 +1691,12 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
         emotion: 'Cooperative'
       };
     } else if (intent === 'PROMISE_TO_PAY') {
+      const normalizedDate = normalizeRelativeDate(userText) || extractSpecificDate(userText);
+      const botText = normalizedDate 
+        ? `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`
+        : `Theek hai, maine aapki payment commitment note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`;
       return {
-        bot_text: `Theek hai, maine payment ki date ${userText} system mein register kar li hai. Kripya tab tak payment kar dijiyega. Dhanyavaad!`,
+        bot_text: botText,
         state: 'CALL_ENDED_SUCCESS',
         is_terminal: true,
         intent: intent,

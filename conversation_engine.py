@@ -24,6 +24,7 @@ import os
 import requests
 import json
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 # Load environment variables from .env file if present
 load_dotenv()
@@ -671,6 +672,132 @@ def is_incomplete_thought(text: str) -> bool:
     return False
 
 
+def normalize_relative_date(text: str, anchor_date: datetime = None) -> str | None:
+    """
+    Normalizes relative date expressions like "kal", "parso", "2 din baad", "next week",
+    "Monday", "aaj shaam" to a standard date format like "27 June".
+    """
+    if anchor_date is None:
+        anchor_date = datetime.now()
+    
+    clean = text.lower().strip()
+    if not clean:
+        return None
+
+    # 1. aaj / today / aaj shaam / today evening
+    if "aaj" in clean or "today" in clean:
+        return f"{anchor_date.day} {anchor_date.strftime('%B')}"
+        
+    # 2. parso / parson / 2 din baad / in 2 days / do din baad / day after tomorrow
+    if "parso" in clean or "parson" in clean or "2 din baad" in clean or "do din baad" in clean or "day after tomorrow" in clean:
+        dt = anchor_date + timedelta(days=2)
+        return f"{dt.day} {dt.strftime('%B')}"
+        
+    # 3. kal / tomorrow
+    # Note: check "kal" after "parso" to avoid matching "kal" inside "parso" or checking "parso" first
+    if "kal" in clean or "tomorrow" in clean:
+        dt = anchor_date + timedelta(days=1)
+        return f"{dt.day} {dt.strftime('%B')}"
+        
+    # 4. 3 din baad / teen din baad / in 3 days
+    if "3 din baad" in clean or "teen din baad" in clean or "in 3 days" in clean:
+        dt = anchor_date + timedelta(days=3)
+        return f"{dt.day} {dt.strftime('%B')}"
+        
+    # 5. next week / agle hafte / agle week
+    if "next week" in clean or "agle hafte" in clean or "agle week" in clean:
+        dt = anchor_date + timedelta(days=7)
+        return f"{dt.day} {dt.strftime('%B')}"
+        
+    # 6. Weekdays mapping
+    weekdays_en = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    weekdays_hi = ["somwar", "mangalwar", "budhwar", "guruwar", "shukrawar", "shaniwar", "ravivar"]
+    weekdays_hi_alt = ["somvaar", "mangalvaar", "budhvaar", "guruvaar", "shukrawaar", "shaniwaar", "ravivaar"]
+    weekdays_hi_dev = ["सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार"]
+    
+    for i in range(7):
+        if (weekdays_en[i] in clean or 
+            weekdays_hi[i] in clean or 
+            weekdays_hi_alt[i] in clean or 
+            weekdays_hi_dev[i] in clean):
+            current_weekday = anchor_date.weekday()  # Monday is 0, Sunday is 6
+            days_ahead = (i - current_weekday) % 7
+            if days_ahead <= 0:
+                days_ahead += 7  # If they say "Monday" on a Monday, they mean next Monday
+            dt = anchor_date + timedelta(days=days_ahead)
+            return f"{dt.day} {dt.strftime('%B')}"
+            
+    # Check Devanagari relative expressions
+    if "परसों" in clean or "परसो" in clean:
+        dt = anchor_date + timedelta(days=2)
+        return f"{dt.day} {dt.strftime('%B')}"
+    if "कल" in clean:
+        dt = anchor_date + timedelta(days=1)
+        return f"{dt.day} {dt.strftime('%B')}"
+        
+    return None
+
+
+def extract_specific_date(text: str, anchor_date: datetime = None) -> str | None:
+    """
+    Extracts explicit date strings like "15 June", "28 tareekh ko" from the user text.
+    """
+    if anchor_date is None:
+        anchor_date = datetime.now()
+        
+    clean = text.lower().strip()
+    if not clean:
+        return None
+        
+    months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december",
+              "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    months_pattern = "|".join(months)
+    
+    # 1. Try pattern: 27 June, 27th June, 27 june
+    m = re.search(rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s*({months_pattern})\b", clean)
+    if m:
+        day = int(m.group(1))
+        month_raw = m.group(2)
+        full_month = None
+        for mon in ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]:
+            if mon.startswith(month_raw):
+                full_month = mon.capitalize()
+                break
+        if full_month:
+            return f"{day} {full_month}"
+
+    # 2. Try pattern: June 27, June 27th
+    m = re.search(rf"\b({months_pattern})\s*(\d{{1,2}})(?:st|nd|rd|th)?\b", clean)
+    if m:
+        day = int(m.group(2))
+        month_raw = m.group(1)
+        full_month = None
+        for mon in ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]:
+            if mon.startswith(month_raw):
+                full_month = mon.capitalize()
+                break
+        if full_month:
+            return f"{day} {full_month}"
+            
+    # 3. Try pattern: 28 tareekh ko, 28 tarikh
+    m = re.search(r"\b(\d{1,2})\s*(?:tareekh|tarikh)\b", clean)
+    if m:
+        day = int(m.group(1))
+        if day >= anchor_date.day:
+            return f"{day} {anchor_date.strftime('%B')}"
+        else:
+            # next month
+            next_month = anchor_date.month + 1
+            year = anchor_date.year
+            if next_month > 12:
+                next_month = 1
+                year += 1
+            dt = datetime(year, next_month, 1)
+            return f"{day} {dt.strftime('%B')}"
+            
+    return None
+
+
 def extract_callback_time(text: str) -> str | None:
     """
     Extracts a specific date or time from the user text if it is present.
@@ -1092,9 +1219,9 @@ def bot_say(ctx: CallContext) -> str:
         text = "Aapko kis samay call karein? Taaki main convenient time note kar sakoon."
     elif ctx.state == State.CALL_ENDED_SUCCESS:
         if ctx.promise_date:
-            text = f"Theek hai, maine payment ki date {ctx.promise_date} system mein register kar li hai. Kripya tab tak payment kar dijiyega. Dhanyavaad!"
+            text = f"Maine aapki payment {ctx.promise_date} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad."
         else:
-            text = "Theek hai, main hamare records mein check kar leta hoon. Dhanyavaad."
+            text = "Theek hai, maine aapki payment commitment note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad."
     elif ctx.state == State.CALL_ENDED_CALLBACK:
         text = "Maine aapka convenient callback time note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!"
     elif ctx.state == State.CALL_ENDED_WRONG_NUMBER:
@@ -1278,17 +1405,9 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
 
     # Global PROMISE_TO_PAY check
     if intent == Intent.PROMISE_TO_PAY and not is_call_over(ctx):
-        user_text_lower = user_text.lower()
-        date_keywords = ["kal", "parso", "parson", "aaj shaam", "kal subah", "kal dopahar", "kal shaam", "parso subah", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
-                         "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "today", "tomorrow", "2 din baad", "3 tareekh ko", "mahine ke end mein"]
-        devanagari_keywords = ["कल", "परसो", "परसों", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"]
-        matched_kw = None
-        for kw in date_keywords + devanagari_keywords:
-            if kw in user_text_lower:
-                matched_kw = kw
-                break
-        if matched_kw:
-            ctx.promise_date = user_text.strip()
+        normalized_date = normalize_relative_date(user_text) or extract_specific_date(user_text)
+        if normalized_date:
+            ctx.promise_date = normalized_date
             ctx.state = State.CALL_ENDED_SUCCESS
         else:
             ctx.state = State.ASK_PAYMENT_DATE
@@ -1316,17 +1435,9 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
             ctx.unclear_retries = 0
             return bot_say(ctx)
         elif intent == Intent.PROMISE_TO_PAY:
-            user_text_lower = user_text.lower()
-            date_keywords = ["kal", "parso", "parson", "aaj shaam", "kal subah", "kal dopahar", "kal shaam", "parso subah", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
-                             "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "today", "tomorrow", "2 din baad", "3 tareekh ko", "mahine ke end mein"]
-            devanagari_keywords = ["कल", "परसो", "परसों", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"]
-            matched_kw = None
-            for kw in date_keywords + devanagari_keywords:
-                if kw in user_text_lower:
-                    matched_kw = kw
-                    break
-            if matched_kw:
-                ctx.promise_date = user_text.strip()
+            normalized_date = normalize_relative_date(user_text) or extract_specific_date(user_text)
+            if normalized_date:
+                ctx.promise_date = normalized_date
                 ctx.state = State.CALL_ENDED_SUCCESS
             else:
                 ctx.state = State.ASK_PAYMENT_DATE
@@ -1369,17 +1480,9 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
             ctx.unclear_retries = 0
             return bot_say(ctx)
         elif intent == Intent.PROMISE_TO_PAY:
-            user_text_lower = user_text.lower()
-            date_keywords = ["kal", "parso", "parson", "aaj shaam", "kal subah", "kal dopahar", "kal shaam", "parso subah", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
-                             "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "today", "tomorrow", "2 din baad", "3 tareekh ko", "mahine ke end mein"]
-            devanagari_keywords = ["कल", "परसो", "परसों", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"]
-            matched_kw = None
-            for kw in date_keywords + devanagari_keywords:
-                if kw in user_text_lower:
-                    matched_kw = kw
-                    break
-            if matched_kw:
-                ctx.promise_date = user_text.strip()
+            normalized_date = normalize_relative_date(user_text) or extract_specific_date(user_text)
+            if normalized_date:
+                ctx.promise_date = normalized_date
                 ctx.state = State.CALL_ENDED_SUCCESS
             else:
                 ctx.state = State.ASK_PAYMENT_DATE
@@ -1423,7 +1526,8 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
         return bot_say(ctx)
 
     elif ctx.state == State.ASK_PAYMENT_DATE:
-        ctx.promise_date = user_text.strip()
+        normalized_date = normalize_relative_date(user_text) or extract_specific_date(user_text)
+        ctx.promise_date = normalized_date if normalized_date else ""
         ctx.state = State.CALL_ENDED_SUCCESS
         ctx.unclear_retries = 0
         return bot_say(ctx)
@@ -1501,7 +1605,8 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
             ctx.unclear_retries = 0
             return bot_say(ctx)
         elif intent == Intent.PROMISE_TO_PAY:
-            ctx.promise_date = user_text.strip()
+            normalized_date = normalize_relative_date(user_text) or extract_specific_date(user_text)
+            ctx.promise_date = normalized_date if normalized_date else ""
             ctx.state = State.CALL_ENDED_SUCCESS
             ctx.unclear_retries = 0
             return bot_say(ctx)
