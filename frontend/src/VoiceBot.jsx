@@ -1092,10 +1092,9 @@ const detectIntent = (text, customerName = null) => {
           break;
         }
       }
-      if (!isExpected) {
         const ignoreWords = [
           "haan", "ha", "han", "haa", "ji", "yes", "y", "ok", "okay", "no", "nah", "nahi", "nahin", "naa", "correct", "wrong", "galat", "hello", "hi", "speaking",
-          "हाँ", "जी", "ठीक", "हां", "नहीं", "नही", "ही", "भी", "तो"
+          "हाँ", "जी", "ठीक", "हां", "नहीं", "नही", "ही", "भी", "तो", "acha", "achha", "अच्छा", "thik", "theek", "sahi", "सही", "sure", "yep", "aur", "and", "or"
         ];
         if (!ignoreWords.includes(w) && !ignoreWords.includes(wLatin)) {
           return 'WRONG_PERSON';

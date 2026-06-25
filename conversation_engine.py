@@ -1162,7 +1162,7 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
                     return Intent.WRONG_PERSON
 
         # Standalone different name check
-        words = re.findall(r"\b[a-zA-Z\u0900-\u097F]+\b", text)
+        words = [w.strip(".,!?।") for w in text.split() if w.strip()]
         if len(words) == 1:
             w = words[0]
             w_latin = devanagari_to_latin(w)
@@ -1174,7 +1174,7 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
             if not is_expected:
                 ignore_words = {
                     "haan", "ha", "han", "haa", "ji", "yes", "y", "ok", "okay", "no", "nah", "nahi", "nahin", "naa", "correct", "wrong", "galat", "hello", "hi", "speaking",
-                    "हाँ", "जी", "ठीक", "हां", "नहीं", "नही", "ही", "भी", "तो"
+                    "हाँ", "जी", "ठीक", "हां", "नहीं", "नही", "ही", "भी", "तो", "acha", "achha", "अच्छा", "thik", "theek", "sahi", "सही", "sure", "yep", "aur", "and", "or"
                 }
                 if w not in ignore_words and w_latin not in ignore_words:
                     return Intent.WRONG_PERSON
@@ -1186,7 +1186,7 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
     # 4b. Fuzzy identity name confirmation check
     if customer_name:
         expected_parts = [p.lower() for p in customer_name.split() if len(p) >= 3]
-        words_raw = re.findall(r"\b[a-zA-Z\u0900-\u097F]+\b", text)
+        words_raw = [w.strip(".,!?।") for w in text.split() if w.strip()]
         words_latin = re.findall(r"\b\w+\b", latin_text)
         all_words = set(words_raw + words_latin)
         

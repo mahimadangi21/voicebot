@@ -65,7 +65,9 @@ PRONUNCIATION_OVERRIDES = {
     "INR": "आई एन आर",
     "UPI": "यू पी आई",
     "SMS": "एस एम एस",
-    "PAN": "पैन"
+    "PAN": "पैन",
+    "CALLBACK": "kawl-back",
+    "CONTACT": "kon-takt"
 }
 
 # Mapping of digits 1-99 to Hinglish (transliterated Hindi) words
@@ -377,7 +379,11 @@ HINGLISH_TO_DEVANAGARI = {
     "fool": "फूल",
     "nonsense": "नॉनसेंस",
     "abusive": "एब्यूजिव",
-    "contact": "कांटेक्ट",
+    "contact": "कॉन्टेक्ट",
+    "kawl": "कॉल",
+    "back": "बैक",
+    "kon": "कॉन्",
+    "takt": "टैक्ट",
     "office": "ऑफिस",
     "rbi": "आरबीआई",
     "rules": "रूल्स",
