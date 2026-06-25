@@ -675,7 +675,7 @@ def is_incomplete_thought(text: str) -> bool:
 def normalize_relative_date(text: str, anchor_date: datetime = None) -> str | None:
     """
     Normalizes relative date expressions like "kal", "parso", "2 din baad", "next week",
-    "Monday", "aaj shaam" to a standard date format like "27 June".
+    "Monday", "aaj shaam", "salary aane ke baad", "mahine ke end mein" to a standard date format like "27 June".
     """
     if anchor_date is None:
         anchor_date = datetime.now()
@@ -684,57 +684,103 @@ def normalize_relative_date(text: str, anchor_date: datetime = None) -> str | No
     if not clean:
         return None
 
-    # 1. aaj / today / aaj shaam / today evening
-    if "aaj" in clean or "today" in clean:
-        return f"{anchor_date.day} {anchor_date.strftime('%B')}"
-        
-    # 2. parso / parson / 2 din baad / in 2 days / do din baad / day after tomorrow
-    if "parso" in clean or "parson" in clean or "2 din baad" in clean or "do din baad" in clean or "day after tomorrow" in clean:
-        dt = anchor_date + timedelta(days=2)
+    # Helper to format
+    def fmt(dt):
         return f"{dt.day} {dt.strftime('%B')}"
-        
-    # 3. kal / tomorrow
-    # Note: check "kal" after "parso" to avoid matching "kal" inside "parso" or checking "parso" first
-    if "kal" in clean or "tomorrow" in clean:
-        dt = anchor_date + timedelta(days=1)
-        return f"{dt.day} {dt.strftime('%B')}"
-        
-    # 4. 3 din baad / teen din baad / in 3 days
-    if "3 din baad" in clean or "teen din baad" in clean or "in 3 days" in clean:
-        dt = anchor_date + timedelta(days=3)
-        return f"{dt.day} {dt.strftime('%B')}"
-        
-    # 5. next week / agle hafte / agle week
-    if "next week" in clean or "agle hafte" in clean or "agle week" in clean:
-        dt = anchor_date + timedelta(days=7)
-        return f"{dt.day} {dt.strftime('%B')}"
-        
-    # 6. Weekdays mapping
+
+    # 1. 7 din baad / saat din baad / 7 days
+    if "7 din" in clean or "saat din" in clean or "7 day" in clean or "seven day" in clean:
+        return fmt(anchor_date + timedelta(days=7))
+
+    # 2. ek hafte baad / one week / 1 week / ek week / ek hafte
+    if "ek hafte" in clean or "one week" in clean or "1 week" in clean or "ek week" in clean or "1 hafte" in clean:
+        return fmt(anchor_date + timedelta(days=7))
+
+    # 3. 2 din baad / do din baad / 2 days / two days
+    if "2 din" in clean or "do din" in clean or "2 day" in clean or "two day" in clean:
+        return fmt(anchor_date + timedelta(days=2))
+
+    # 4. 3 din baad / teen din baad / 3 days / three days
+    if "3 din" in clean or "teen din" in clean or "3 day" in clean or "three day" in clean:
+        return fmt(anchor_date + timedelta(days=3))
+
+    # 5. agle Monday / next Monday (or other weekdays with "next" or "agle")
     weekdays_en = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     weekdays_hi = ["somwar", "mangalwar", "budhwar", "guruwar", "shukrawar", "shaniwar", "ravivar"]
     weekdays_hi_alt = ["somvaar", "mangalvaar", "budhvaar", "guruvaar", "shukrawaar", "shaniwaar", "ravivaar"]
     weekdays_hi_dev = ["सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार"]
     
     for i in range(7):
+        pat_en = rf"\b(?:next|agle|अगले|अगला)\s+{weekdays_en[i]}\b"
+        pat_hi = rf"\b(?:next|agle|अगले|अगला)\s+{weekdays_hi[i]}\b"
+        pat_hi_alt = rf"\b(?:next|agle|अगले|अगला)\s+{weekdays_hi_alt[i]}\b"
+        
+        if (re.search(pat_en, clean) or 
+            re.search(pat_hi, clean) or 
+            re.search(pat_hi_alt, clean) or
+            f"अगले {weekdays_hi_dev[i]}" in clean or
+            f"अगला {weekdays_hi_dev[i]}" in clean):
+            
+            current_weekday = anchor_date.weekday()
+            days_ahead = (i - current_weekday) % 7
+            if days_ahead <= 0:
+                days_ahead += 7
+            return fmt(anchor_date + timedelta(days=days_ahead))
+
+    # 6. mahine ke end mein / month end / end of month
+    if "mahine ke end" in clean or "month end" in clean or "end of the month" in clean or "end of month" in clean or "mahine ke aakhiri" in clean:
+        next_month = anchor_date.replace(day=28) + timedelta(days=4)
+        last_day = next_month - timedelta(days=next_month.day)
+        return fmt(last_day)
+
+    # 7. salary aane ke baad / salary aane par
+    if "salary" in clean or "salaray" in clean or "सैलरी" in clean:
+        next_month = anchor_date.replace(day=28) + timedelta(days=4)
+        last_day = next_month - timedelta(days=next_month.day)
+        return fmt(last_day)
+
+    # 8. agle mahine / next month / agle month
+    if "agle mahine" in clean or "next month" in clean or "agle month" in clean or "अगले महीने" in clean or "अगले महिने" in clean:
+        month = anchor_date.month + 1
+        year = anchor_date.year
+        if month > 12:
+            month = 1
+            year += 1
+        day = anchor_date.day
+        try:
+            dt = datetime(year, month, day)
+        except ValueError:
+            dt = datetime(year, month, 28)
+        return fmt(dt)
+
+    # 9. next week / agle hafte / agle week
+    if "next week" in clean or "agle hafte" in clean or "agle week" in clean or "अगले हफ्ते" in clean:
+        return fmt(anchor_date + timedelta(days=7))
+
+    # 10. parso / parson / day after tomorrow
+    if "parso" in clean or "parson" in clean or "day after tomorrow" in clean or "परसों" in clean or "परसो" in clean:
+        return fmt(anchor_date + timedelta(days=2))
+
+    # 11. kal / tomorrow
+    if "kal" in clean or "tomorrow" in clean or "कल" in clean:
+        return fmt(anchor_date + timedelta(days=1))
+
+    # 12. aaj / today / aaj shaam
+    if "aaj" in clean or "today" in clean or "आज" in clean:
+        return fmt(anchor_date)
+
+    # 13. Weekdays without prefix
+    for i in range(7):
         if (weekdays_en[i] in clean or 
             weekdays_hi[i] in clean or 
             weekdays_hi_alt[i] in clean or 
             weekdays_hi_dev[i] in clean):
-            current_weekday = anchor_date.weekday()  # Monday is 0, Sunday is 6
+            current_weekday = anchor_date.weekday()
             days_ahead = (i - current_weekday) % 7
             if days_ahead <= 0:
-                days_ahead += 7  # If they say "Monday" on a Monday, they mean next Monday
-            dt = anchor_date + timedelta(days=days_ahead)
-            return f"{dt.day} {dt.strftime('%B')}"
-            
-    # Check Devanagari relative expressions
-    if "परसों" in clean or "परसो" in clean:
-        dt = anchor_date + timedelta(days=2)
-        return f"{dt.day} {dt.strftime('%B')}"
-    if "कल" in clean:
-        dt = anchor_date + timedelta(days=1)
-        return f"{dt.day} {dt.strftime('%B')}"
-        
+                days_ahead += 7
+            return fmt(anchor_date + timedelta(days=days_ahead))
+
     return None
 
 
@@ -798,6 +844,13 @@ def extract_specific_date(text: str, anchor_date: datetime = None) -> str | None
     return None
 
 
+def clean_callback_time(text: str) -> str:
+    cleaned = text.strip()
+    cleaned = re.sub(r"[.!?।]+$", "", cleaned).strip()
+    cleaned = re.sub(r"\b(?:call\s*karo|call\s*karna|phone\s*karo|phone\s*karna|karo|karna)\b", "", cleaned, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
 def extract_callback_time(text: str) -> str | None:
     """
     Extracts a specific date or time from the user text if it is present.
@@ -830,7 +883,7 @@ def extract_callback_time(text: str) -> str | None:
     ]
     
     if any(re.search(pat, cleaned) for pat in time_patterns):
-        return text.strip()
+        return clean_callback_time(text)
         
     return None
 
@@ -1017,7 +1070,7 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
             m = re.search(pat, text)
             if m:
                 extracted = m.group(1).lower().strip()
-                if extracted and extracted not in expected_parts and extracted not in ["unka", "uska", "apka", "aapka", "kya", "mera", "mai", "main", "bol"]:
+                if extracted and extracted not in expected_parts and extracted not in ["unka", "uska", "apka", "aapka", "kya", "mera", "mai", "main", "bol", "hi", "he", "hee", "h", "ji", "ko"]:
                     return Intent.WRONG_PERSON
 
     for pattern in wrong_person_patterns:
@@ -1044,7 +1097,9 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
         if re.search(pattern, text):
             return Intent.FINANCIAL_PROBLEM
 
-    # 8c. Check promise to pay
+    # 8c. Check promise to pay (dynamic & keyword-based)
+    if normalize_relative_date(text) or extract_specific_date(text):
+        return Intent.PROMISE_TO_PAY
     for pattern in PROMISE_TO_PAY_PATTERNS:
         if re.search(pattern, text):
             return Intent.PROMISE_TO_PAY
@@ -1143,6 +1198,8 @@ class CallContext:
     callback_time: str = ""  # For saving Category 12 callback details
     engine: str = "sarvam"
     voice: str = "male"
+    already_paid: bool = False
+    amount_disclosed: bool = False
 
     def log(self, speaker: str, text: str):
         self.transcript.append((speaker, text))
@@ -1192,48 +1249,172 @@ def line_fallback_to_amount(ctx: CallContext) -> str:
 # 4. STATE MACHINE TRANSITIONS
 # ---------------------------------------------------------------------------
 
+def get_deterministic_index(name: str, choices_count: int) -> int:
+    if not name:
+        return 0
+    clean_name = "".join(name.lower().split())
+    h = 0
+    for char in clean_name:
+        h = (h * 31 + ord(char)) & 0xFFFFFFFF
+    return h % choices_count
+
 def bot_say(ctx: CallContext) -> str:
     """Returns what the bot should say for the CURRENT state (before user replies)."""
+    idx = get_deterministic_index(ctx.name, 3)
+
+    # 1. Handle amount due prefix if not yet disclosed
+    amount_prefix = ""
+    if ctx.state in {State.PAYMENT_CONFIRM, State.CALL_ENDED_SUCCESS} and not ctx.amount_disclosed:
+        amount_prefixes = [
+            f"Aapka {ctx.amount} rupaye ka amount due hai hamare bank mein. ",
+            f"Aapka pending amount ₹{ctx.amount} due hai. ",
+            f"Hamare records ke mutabik aapka ₹{ctx.amount} ka outstanding amount pending hai. "
+        ]
+        amount_prefix = amount_prefixes[idx]
+        ctx.amount_disclosed = True
+
+    if ctx.state in {State.AMOUNT_DUE, State.DUE_DATE, State.WRONG_AMOUNT}:
+        ctx.amount_disclosed = True
+
     if ctx.state == State.GREETING:
-        text = line_greeting(ctx)
+        templates = [
+            f"Hello, kya meri baat {ctx.name} se ho rahi hai?",
+            f"Ji hello, kya meri baat {ctx.name} ji se ho rahi hai?",
+            f"Hello, kya main {ctx.name} ji se baat kar raha hoon?"
+        ]
+        text = templates[idx]
     elif ctx.state == State.GREETING_IDENTITY_ASKED:
-        text = (
-            f"Main {ctx.bank_name} Bank se bol raha hoon. Yeh call aapke pending personal due amount "
-            f"ke payment ke baare mein hai. Kya meri baat {ctx.name} se ho rahi hai?"
-        )
+        templates = [
+            f"Main {ctx.bank_name} Bank se bol raha hoon. Yeh call aapke pending personal due amount ke payment ke baare mein hai. Kya meri baat {ctx.name} se ho rahi hai?",
+            f"Ji main {ctx.bank_name} Bank se baat kar raha hoon aapke pending due ke silsile mein. Kya meri baat {ctx.name} ji se ho rahi hai?",
+            f"Main {ctx.bank_name} Bank se bol raha hoon aapke due amount ke regarding. Kya main {ctx.name} ji se baat kar sakta hoon?"
+        ]
+        text = templates[idx]
     elif ctx.state == State.ASK_JITESH:
-        text = f"Achha okay. Kya meri baat {ctx.name} ji se ho sakti hai? Main {ctx.bank_name} Bank se bol raha hoon."
+        templates = [
+            f"Achha okay. Kya meri baat {ctx.name} ji se ho sakti hai? Main {ctx.bank_name} Bank se bol raha hoon.",
+            f"Theek hai. Kya aap meri baat {ctx.name} ji se karwa sakte hain? Main {ctx.bank_name} Bank se bol raha hoon.",
+            f"Achha, to kya {ctx.name} ji ghar par hain? Unse baat karwa dijiye please, main {ctx.bank_name} Bank se bol raha hoon."
+        ]
+        text = templates[idx]
     elif ctx.state == State.AMOUNT_DUE:
-        text = line_amount_due(ctx)
+        templates = [
+            f"Aapka {ctx.amount} rupaye ka amount due hai hamare bank mein.",
+            f"Aapka pending amount ₹{ctx.amount} due hai. Kripya isko clear karein.",
+            f"Hamare records ke mutabik aapka ₹{ctx.amount} ka outstanding amount pending hai."
+        ]
+        text = templates[idx]
     elif ctx.state == State.BANK_NAME:
-        text = line_bank_name(ctx)
+        templates = [
+            f"Main {ctx.bank_name} bank se bol raha hoon. Agar aap abhi pay kar rahe ho, to main aapko payment link bhej deta hoon.",
+            f"Main {ctx.bank_name} Bank se baat kar raha hoon. Agar aap abhi payment karna chahte hain, to main abhi link bhej deta hoon.",
+            f"Ji main {ctx.bank_name} Bank se bol raha hoon. Agar aap payment karne ke liye taiyar hain, to main link WhatsApp ya SMS par bhej deta hoon."
+        ]
+        text = templates[idx]
     elif ctx.state == State.ALREADY_PAID:
-        text = "Achha, aapne kab pay kiya tha? Main system mein check kar leta hoon."
+        templates = [
+            "Achha, aapne kab pay kiya tha? Main system mein check kar leta hoon.",
+            "Achha theek hai, kripya mujhe payment ki date bata dijiye taaki main check kar sakoon.",
+            "Achha okay, aapne kis tareekh ko payment kiya tha? Main system mein verify kar leta hoon."
+        ]
+        text = templates[idx]
     elif ctx.state == State.DE_ESCALATE:
-        text = "Maaf kijiye, hum aapko pareshan nahi karna chahte. Agar aap abhi payment nahi kar sakte to koi baat nahi."
+        templates = [
+            "Maaf kijiye, hum aapko pareshan nahi karna chahte. Agar aap abhi payment nahi kar sakte to koi baat nahi.",
+            "Maaf kijiye, hamara maksad aapko pareshan karna nahi tha. Agar payment abhi nahi ho sakti to hum baad mein contact kar lenge.",
+            "I am sorry, hum aapko disturb nahi karna chahte. Agar abhi payment possible nahi hai to koi baat nahi."
+        ]
+        text = templates[idx]
     elif ctx.state == State.PAYMENT_CONFIRM:
-        text = line_payment_sent(ctx)
+        templates = [
+            "Theek hai, maine aapko payment link bhej diya hai aapke number par. Dhanyavaad, aapka din shubh ho!",
+            "Sure, payment link aapke number par send kar diya hai. Kripya check kijiye aur pay kar dijiye. Dhanyavaad!",
+            "Theek hai, link aapko send ho gaya hai. Aap usse abhi pay kar sakte hain. Bahut-bahut dhanyavaad!"
+        ]
+        text = amount_prefix + templates[idx]
     elif ctx.state == State.ASK_PAYMENT_DATE:
-        text = "Aap kis date ko pay karenge? Taaki main system mein note kar sakoon."
+        templates = [
+            "Aap kis date ko pay karenge? Taaki main system mein note kar sakoon.",
+            "Kripya mujhe date bata dijiye jab aap pay karenge, taaki main entry kar loon.",
+            "Aap kis tareekh tak payment kar denge? Main uski entry system mein kar deta hoon."
+        ]
+        text = templates[idx]
     elif ctx.state == State.ASK_CALLBACK_TIME:
-        text = "Aapko kis samay call karein? Taaki main convenient time note kar sakoon."
+        templates = [
+            "Aapko kis samay call karein? Taaki main convenient time note kar sakoon.",
+            "Kripya mujhe ek convenient time bata dijiye jab main aapse dobara baat kar sakoon.",
+            "Aap kis samay available rahenge call ke liye? Main wahi time note kar leta hoon."
+        ]
+        text = templates[idx]
     elif ctx.state == State.CALL_ENDED_SUCCESS:
-        if ctx.promise_date:
-            text = f"Maine aapki payment {ctx.promise_date} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad."
+        if ctx.already_paid:
+            templates = [
+                "Achha, theek hai. Maine note kar liya hai ki aapne payment kar diya hai. Main hamare records mein check kar leta hoon. Dhanyavaad.",
+                "Ji theek hai, maine note kar liya hai ki aapne payment kar diya hai. Hum records verify kar lenge. Dhanyavaad.",
+                "Theek hai, aapki payment details maine mark kar li hain. Main system mein update kar deta hoon. Dhanyavaad."
+            ]
+        elif ctx.promise_date:
+            templates = [
+                f"Maine aapki payment {ctx.promise_date} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.",
+                f"Theek hai, maine check kiya aur aapki payment date {ctx.promise_date} system mein mark kar li hai. Kripya yaad se pay kar dijiye. Dhanyavaad.",
+                f"Ji theek hai, maine {ctx.promise_date} ko aapki payment ki commitment note kar li hai. Samay par bhugtan kar dijiye. Dhanyavaad."
+            ]
         else:
-            text = "Theek hai, maine aapki payment commitment note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad."
+            templates = [
+                "Theek hai, maine aapki payment commitment note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.",
+                "Achha theek hai, maine aapki commitment note kar li hai. Kripya time par pay kar dijiye. Dhanyavaad.",
+                "Ji, maine aapki payment commitment system mein register kar li hai. Dhanyavaad."
+            ]
+        text = amount_prefix + templates[idx]
     elif ctx.state == State.CALL_ENDED_CALLBACK:
-        text = "Maine aapka convenient callback time note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!"
+        if ctx.callback_time:
+            templates = [
+                f"Maine aapka convenient callback time {ctx.callback_time} note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!",
+                f"Theek hai, maine schedule kar diya hai. Hum aapko {ctx.callback_time} par dobara contact karenge. Dhanyavaad!",
+                f"Ji okay, maine {ctx.callback_time} ka time note kar liya hai. Hum aapko usi samay call karenge. Aapka din shubh ho!"
+            ]
+        else:
+            templates = [
+                "Maine aapka convenient callback time note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!",
+                "Theek hai, maine schedule kar diya hai. Hum aapko baad mein call karenge. Dhanyavaad!",
+                "Ji okay, callback ka time system mein note ho gaya hai. Hum baad mein call karenge. Aapka din shubh ho!"
+            ]
+        text = templates[idx]
     elif ctx.state == State.CALL_ENDED_WRONG_NUMBER:
-        text = line_wrong_number()
+        templates = [
+            "Oh sorry, lagta hai mujhe wrong number mil gaya. Maaf kijiye, dhanyavaad.",
+            "Oh sorry, shayad number galat mil gaya hai. Disturb karne ke liye maaf kijiye, dhanyavaad.",
+            "I am sorry, lagta hai yeh galat number hai. Maaf kijiye, dhanyavaad."
+        ]
+        text = templates[idx]
     elif ctx.state == State.CALL_ENDED_REFUSED:
-        text = line_refused()
+        templates = [
+            "Koi baat nahi, hum aapse dobara contact karenge. Dhanyavaad.",
+            "Theek hai, koi baat nahi. Hum baad mein baat karenge. Dhanyavaad.",
+            "Okay, main samajh gaya. Hum aapse baad mein contact karenge. Dhanyavaad."
+        ]
+        text = templates[idx]
     elif ctx.state == State.CALL_ENDED_UNCLEAR:
-        text = line_unclear_giveup()
+        templates = [
+            "Theek hai, main baad mein call karta hoon. Dhanyavaad.",
+            "Lagta hai network issues hain. Hum baad mein contact karenge. Dhanyavaad.",
+            "Awaaz theek se nahi aa rahi hai. Hum baad mein call karenge. Dhanyavaad."
+        ]
+        text = templates[idx]
     elif ctx.state == State.CALL_ENDED_FINANCIAL:
-        text = "Oh, mujhe sunkar dukh hua. Main samajh sakta hoon ki aap abhi financial problem mein hain. Main system mein mark kar deta hoon ki aap abhi pay nahi kar sakte. Hum aapse baad mein contact karenge. Dhanyavaad, apna khayal rakhiyega."
+        templates = [
+            "Oh, mujhe sunkar dukh hua. Main samajh sakta hoon ki aap abhi financial problem mein hain. Main system mein mark kar deta hoon ki aap abhi pay nahi kar sakte. Hum aapse baad mein contact karenge. Dhanyavaad, apna khayal rakhiyega.",
+            "Oh, I am sorry to hear that. Main samajh sakta hoon ki pareshani hai. Main record mein mark kar deta hoon ki abhi payment possible nahi hai. Hum baad mein connect karenge. Dhanyavaad aur apna khayal rakhein.",
+            "Dukh hua sunkar. Pareshani ki wajah se main ise system mein note kar leta hoon. Hum aapse baad mein contact karenge. Dhanyavaad, apna dhyaan rakhiyega."
+        ]
+        text = templates[idx]
     elif ctx.state == State.CALL_ENDED_ESCALATED:
-        text = "Hum samajh sakte hain. Main aapki call hamare senior representative ya manager ko transfer kar raha hoon. Kripya line par bane rahein. Dhanyavaad."
+        templates = [
+            "Hum samajh sakte hain. Main aapki call hamare senior representative ya manager ko transfer kar raha hoon. Kripya line par bane rahein. Dhanyavaad.",
+            "Ji main samajh raha hoon. Main aapki call senior department ya manager ko forward kar raha hoon. Kripya line hold kijiye. Dhanyavaad.",
+            "Theek hai. Is vishay par baat karne ke liye main call manager ko connect kar raha hoon. Kripya line par bane rahein. Dhanyavaad."
+        ]
+        text = templates[idx]
     elif ctx.state == State.DUE_DATE:
         text = "Aapki payment due date 15 June 2026 hai. Kya main aapko payment link bhej doon?"
     elif ctx.state == State.WRONG_AMOUNT:
@@ -1267,18 +1448,33 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
 
     # Global check for callbacks in non-terminal states
     if intent == Intent.CALLBACK and not is_call_over(ctx) and ctx.state != State.ASK_CALLBACK_TIME:
-        # Bypassed in GREETING state if user confirms identity in the same turn
-        if ctx.state in {State.GREETING, State.GREETING_IDENTITY_ASKED} and any(word in user_text.lower() for word in ["haan", "ha", "ji", "speaking", "main hi", "bol raha"]):
-            intent = Intent.AFFIRM
+        extracted_time = extract_callback_time(user_text)
+        if extracted_time:
+            ctx.callback_time = extracted_time
+            ctx.state = State.CALL_ENDED_CALLBACK
         else:
-            extracted_time = extract_callback_time(user_text)
-            if extracted_time:
-                ctx.callback_time = extracted_time
-                ctx.state = State.CALL_ENDED_CALLBACK
-            else:
-                ctx.state = State.ASK_CALLBACK_TIME
-            ctx.unclear_retries = 0
-            return bot_say(ctx)
+            ctx.state = State.ASK_CALLBACK_TIME
+        ctx.unclear_retries = 0
+        return bot_say(ctx)
+
+    # Global check for ALREADY_PAID in non-terminal states
+    if intent == Intent.ALREADY_PAID and not is_call_over(ctx):
+        date_indicators = ["kal", "parso", "parson", "aaj", "subah", "shaam", "dopahar", "morning", "evening", "afternoon", "night", "raat", "yesterday", "today", "paid", "done", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "somwar", "mangalwar", "budhwar", "guruwar", "shukrawar", "shaniwar", "ravivar", "somvaar", "mangalvaar", "budhvaar", "guruvaar", "shukrawaar", "shaniwaar", "ravivaar", "कल", "परसों", "आज", "सुबह", "शाम", "दोपहर", "रात"]
+        has_date = any(word in user_text.lower() for word in date_indicators) or normalize_relative_date(user_text) is not None or extract_specific_date(user_text) is not None
+        if has_date:
+            ctx.already_paid = True
+            ctx.state = State.CALL_ENDED_SUCCESS
+        else:
+            ctx.state = State.ALREADY_PAID
+        ctx.unclear_retries = 0
+        return bot_say(ctx)
+
+
+    # Global check for financial problem in non-terminal states
+    if intent == Intent.FINANCIAL_PROBLEM and not is_call_over(ctx):
+        ctx.state = State.CALL_ENDED_FINANCIAL
+        ctx.unclear_retries = 0
+        return bot_say(ctx)
 
     # Global check for angry / abusive in non-terminal states
     if intent in {Intent.ANGRY, Intent.ABUSIVE} and not is_call_over(ctx):
@@ -1456,7 +1652,7 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
 
     elif ctx.state == State.ASK_JITESH:
         if intent == Intent.AFFIRM or intent == Intent.ACKNOWLEDGE:
-            ctx.state = State.GREETING
+            ctx.state = State.AMOUNT_DUE
             ctx.unclear_retries = 0
             return bot_say(ctx)
         elif intent == Intent.DENY or intent == Intent.WRONG_PERSON:
@@ -1521,11 +1717,16 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
             return _handle_unclear(ctx, retry_state=State.BANK_NAME)
 
     elif ctx.state == State.ALREADY_PAID:
+        ctx.already_paid = True
         ctx.state = State.CALL_ENDED_SUCCESS
         ctx.unclear_retries = 0
         return bot_say(ctx)
 
     elif ctx.state == State.ASK_PAYMENT_DATE:
+        if intent == Intent.DENY:
+            ctx.state = State.CALL_ENDED_REFUSED
+            ctx.unclear_retries = 0
+            return bot_say(ctx)
         normalized_date = normalize_relative_date(user_text) or extract_specific_date(user_text)
         ctx.promise_date = normalized_date if normalized_date else ""
         ctx.state = State.CALL_ENDED_SUCCESS
@@ -1533,6 +1734,10 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
         return bot_say(ctx)
 
     elif ctx.state == State.ASK_CALLBACK_TIME:
+        if intent == Intent.DENY:
+            ctx.state = State.CALL_ENDED_REFUSED
+            ctx.unclear_retries = 0
+            return bot_say(ctx)
         extracted_time = extract_callback_time(user_text)
         if extracted_time:
             ctx.callback_time = extracted_time

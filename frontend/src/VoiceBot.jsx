@@ -594,6 +594,15 @@ const UNCLEAR_PATTERNS = [
   /क्या\s*कहा/i
 ];
 
+const cleanCallbackTime = (text) => {
+  if (!text) return '';
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/[.!?।]+$/, '').trim();
+  cleaned = cleaned.replace(/\b(?:call\s*karo|call\s*karna|phone\s*karo|phone\s*karna|karo|karna)\b/gi, '').trim();
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  return cleaned;
+};
+
 const extractCallbackTime = (text) => {
   const clean = (text || '').trim().toLowerCase();
   if (!clean) return null;
@@ -617,7 +626,7 @@ const extractCallbackTime = (text) => {
   ];
 
   if (timePatterns.some(pat => pat.test(clean))) {
-    return text.trim();
+    return cleanCallbackTime(text);
   }
 
   return null;
@@ -633,71 +642,118 @@ const normalizeRelativeDate = (text) => {
   const clean = text.toLowerCase().trim();
   const now = new Date();
 
-  // 1. aaj / today / aaj shaam / today evening
-  if (clean.includes("aaj") || clean.includes("today")) {
-    return formatDate(now);
-  }
-  
-  // 2. parso / parson / 2 din baad / in 2 days / do din baad / day after tomorrow
-  if (clean.includes("parso") || clean.includes("parson") || clean.includes("2 din baad") || clean.includes("do din baad") || clean.includes("day after tomorrow")) {
-    const dt = new Date(now);
-    dt.setDate(now.getDate() + 2);
-    return formatDate(dt);
-  }
+  // Helper to format
+  const fmt = (d) => formatDate(d);
 
-  // 3. kal / tomorrow
-  if (clean.includes("kal") || clean.includes("tomorrow")) {
-    const dt = new Date(now);
-    dt.setDate(now.getDate() + 1);
-    return formatDate(dt);
-  }
-
-  // 4. 3 din baad / teen din baad / in 3 days
-  if (clean.includes("3 din baad") || clean.includes("teen din baad") || clean.includes("in 3 days")) {
-    const dt = new Date(now);
-    dt.setDate(now.getDate() + 3);
-    return formatDate(dt);
-  }
-
-  // 5. next week / agle hafte / agle week
-  if (clean.includes("next week") || clean.includes("agle hafte") || clean.includes("agle week")) {
+  // 1. 7 din baad / saat din baad / 7 days
+  if (clean.includes("7 din") || clean.includes("saat din") || clean.includes("7 day") || clean.includes("seven day")) {
     const dt = new Date(now);
     dt.setDate(now.getDate() + 7);
-    return formatDate(dt);
+    return fmt(dt);
   }
 
-  // 6. Weekdays mapping
+  // 2. ek hafte baad / one week / 1 week / ek week / ek hafte
+  if (clean.includes("ek hafte") || clean.includes("one week") || clean.includes("1 week") || clean.includes("ek week") || clean.includes("1 hafte")) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() + 7);
+    return fmt(dt);
+  }
+
+  // 3. 2 din baad / do din baad / 2 days / two days
+  if (clean.includes("2 din") || clean.includes("do din") || clean.includes("2 day") || clean.includes("two day")) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() + 2);
+    return fmt(dt);
+  }
+
+  // 4. 3 din baad / teen din baad / 3 days / three days
+  if (clean.includes("3 din") || clean.includes("teen din") || clean.includes("3 day") || clean.includes("three day")) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() + 3);
+    return fmt(dt);
+  }
+
+  // 5. agle Monday / next Monday (or other weekdays with "next" or "agle")
   const weekdaysEn = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
   const weekdaysHi = ["somwar", "mangalwar", "budhwar", "guruwar", "shukrawar", "shaniwar", "ravivar"];
   const weekdaysHiAlt = ["somvaar", "mangalvaar", "budhvaar", "guruvaar", "shukrawaar", "shaniwaar", "ravivaar"];
   const weekdaysHiDev = ["सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार"];
 
   for (let i = 0; i < 7; i++) {
+    const matchEn = clean.match(new RegExp(`\\b(?:next|agle|अगले|अगला)\\s+${weekdaysEn[i]}\\b`));
+    const matchHi = clean.match(new RegExp(`\\b(?:next|agle|अगले|अगला)\\s+${weekdaysHi[i]}\\b`));
+    const matchHiAlt = clean.match(new RegExp(`\\b(?:next|agle|अगले|अगला)\\s+${weekdaysHiAlt[i]}\\b`));
+    const matchHiDev = clean.includes(`अगले ${weekdaysHiDev[i]}`) || clean.includes(`अगला ${weekdaysHiDev[i]}`);
+
+    if (matchEn || matchHi || matchHiAlt || matchHiDev) {
+      const currentWeekday = now.getDay();
+      const currentWeekdayNormalized = currentWeekday === 0 ? 6 : currentWeekday - 1;
+      let daysAhead = (i - currentWeekdayNormalized) % 7;
+      if (daysAhead <= 0) daysAhead += 7;
+      const dt = new Date(now);
+      dt.setDate(now.getDate() + daysAhead);
+      return fmt(dt);
+    }
+  }
+
+  // 6. mahine ke end mein / month end / end of month
+  if (clean.includes("mahine ke end") || clean.includes("month end") || clean.includes("end of the month") || clean.includes("end of month") || clean.includes("mahine ke aakhiri")) {
+    const dt = new Date(now.getFullYear(), now.getMonth() + 1, 0); // last day of current month
+    return fmt(dt);
+  }
+
+  // 7. salary aane ke baad / salary aane par
+  if (clean.includes("salary") || clean.includes("salaray") || clean.includes("सैलरी")) {
+    const dt = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return fmt(dt);
+  }
+
+  // 8. agle mahine / next month / agle month
+  if (clean.includes("agle mahine") || clean.includes("next month") || clean.includes("agle month") || clean.includes("अगले महीने") || clean.includes("अगले महिने")) {
+    const dt = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    return fmt(dt);
+  }
+
+  // 9. next week / agle hafte / agle week
+  if (clean.includes("next week") || clean.includes("agle hafte") || clean.includes("agle week") || clean.includes("अगले हफ्ते")) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() + 7);
+    return fmt(dt);
+  }
+
+  // 10. parso / parson / day after tomorrow
+  if (clean.includes("parso") || clean.includes("parson") || clean.includes("day after tomorrow") || clean.includes("परसों") || clean.includes("परसो")) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() + 2);
+    return fmt(dt);
+  }
+
+  // 11. kal / tomorrow
+  if (clean.includes("kal") || clean.includes("tomorrow") || clean.includes("कल")) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() + 1);
+    return fmt(dt);
+  }
+
+  // 12. aaj / today / aaj shaam
+  if (clean.includes("aaj") || clean.includes("today") || clean.includes("आज")) {
+    return fmt(now);
+  }
+
+  // 13. Weekdays without prefix
+  for (let i = 0; i < 7; i++) {
     if (clean.includes(weekdaysEn[i]) || 
         clean.includes(weekdaysHi[i]) || 
         clean.includes(weekdaysHiAlt[i]) || 
         clean.includes(weekdaysHiDev[i])) {
-      const currentWeekday = now.getDay(); // 0 is Sunday, 1 is Monday, etc.
-      // Convert JS Sunday=0, Monday=1 to Monday=0, Sunday=6
+      const currentWeekday = now.getDay();
       const currentWeekdayNormalized = currentWeekday === 0 ? 6 : currentWeekday - 1;
       let daysAhead = (i - currentWeekdayNormalized) % 7;
-      if (daysAhead <= 0) daysAhead += 7; // If today is Monday, Monday means next Monday
+      if (daysAhead <= 0) daysAhead += 7;
       const dt = new Date(now);
       dt.setDate(now.getDate() + daysAhead);
-      return formatDate(dt);
+      return fmt(dt);
     }
-  }
-
-  // Check Devanagari relative expressions
-  if (clean.includes("परसों") || clean.includes("परसो")) {
-    const dt = new Date(now);
-    dt.setDate(now.getDate() + 2);
-    return formatDate(dt);
-  }
-  if (clean.includes("कल")) {
-    const dt = new Date(now);
-    dt.setDate(now.getDate() + 1);
-    return formatDate(dt);
   }
 
   return null;
@@ -873,7 +929,7 @@ const detectIntent = (text, customerName = null) => {
       const m = pat.exec(clean);
       if (m) {
         const extracted = m[1].toLowerCase().trim();
-        const ignoreList = ["unka", "uska", "apka", "aapka", "kya", "mera", "mai", "main", "bol"];
+        const ignoreList = ["unka", "uska", "apka", "aapka", "kya", "mera", "mai", "main", "bol", "hi", "he", "hee", "h", "ji", "ko"];
         if (extracted && !expectedParts.includes(extracted) && !ignoreList.includes(extracted)) {
           return 'WRONG_PERSON';
         }
@@ -955,7 +1011,10 @@ const detectIntent = (text, customerName = null) => {
     if (pat.test(clean)) return 'FINANCIAL_PROBLEM';
   }
   
-  // 8c. Check promise to pay
+  // 8c. Check promise to pay (dynamic & keyword-based)
+  if (normalizeRelativeDate(text) || extractSpecificDate(text)) {
+    return 'PROMISE_TO_PAY';
+  }
   for (const pat of PROMISE_TO_PAY_PATTERNS) {
     if (pat.test(clean)) return 'PROMISE_TO_PAY';
   }
@@ -1053,7 +1112,18 @@ const isIncompleteThought = (text) => {
   return false;
 };
 
-const simulateMockReply = (userText, currentState, customerName, amount, bankName, unclearRetriesRef) => {
+const getDeterministicIndex = (name, choicesCount) => {
+  if (!name) return 0;
+  const cleanName = name.toLowerCase().replace(/\s+/g, '');
+  let h = 0;
+  for (let i = 0; i < cleanName.length; i++) {
+    h = (h * 31 + cleanName.charCodeAt(i)) & 0xFFFFFFFF;
+  }
+  const unsignedH = h >>> 0;
+  return unsignedH % choicesCount;
+};
+
+const simulateMockReply = (userText, currentState, customerName, amount, bankName, unclearRetriesRef, amountDisclosedRef, alreadyPaidRef) => {
   const terminalStates = [
     'CALL_ENDED_SUCCESS', 'CALL_ENDED_REFUSED', 'CALL_ENDED_WRONG_NUMBER',
     'CALL_ENDED_UNCLEAR', 'CALL_ENDED_FINANCIAL', 'CALL_ENDED_CALLBACK',
@@ -1073,12 +1143,19 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
 
   let intent = detectIntent(userText, customerName);
 
+  const idx = getDeterministicIndex(customerName, 3);
+
   // Global check for WRONG_PERSON intent in non-terminal states
   // Explicit wrong-number statements bypass retries entirely and terminate the call immediately
   if (intent === 'WRONG_PERSON' && !terminalStates.includes(currentState)) {
     if (unclearRetriesRef) unclearRetriesRef.current = 0;
+    const botText = [
+      "Oh sorry, lagta hai mujhe wrong number mil gaya. Maaf kijiye, dhanyavaad.",
+      "Oh sorry, shayad number galat mil gaya hai. Disturb karne ke liye maaf kijiye, dhanyavaad.",
+      "I am sorry, lagta hai yeh galat number hai. Maaf kijiye, dhanyavaad."
+    ][idx];
     return {
-      bot_text: "Oh sorry, lagta hai mujhe wrong number mil gaya. Maaf kijiye, dhanyavaad.",
+      bot_text: botText,
       state: 'CALL_ENDED_WRONG_NUMBER',
       is_terminal: true,
       intent: intent,
@@ -1162,6 +1239,7 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   // Global check for wrong amount dispute in non-terminal states
   if (intent === 'WRONG_AMOUNT' && !terminalStates.includes(currentState)) {
     if (unclearRetriesRef) unclearRetriesRef.current = 0;
+    if (amountDisclosedRef) amountDisclosedRef.current = true;
     return {
       bot_text: `Hamare bank records ke anusar aapka outstanding amount ₹${amount} hi hai. Kripya outstanding clear karein taaki koi penalty na lage. Kya main payment link bhej doon?`,
       state: 'WRONG_AMOUNT',
@@ -1198,8 +1276,13 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   // Global check for bank name question in non-terminal states
   if (intent === 'ASK_BANK' && !terminalStates.includes(currentState)) {
     if (unclearRetriesRef) unclearRetriesRef.current = 0;
+    const botText = [
+      `Main ${bankName} bank se bol raha hoon. Agar aap abhi pay kar rahe ho, to main aapko payment link bhej deta hoon.`,
+      `Main ${bankName} Bank se baat kar raha hoon. Agar aap abhi payment karna chahte hain, to main abhi link bhej deta hoon.`,
+      `Ji main ${bankName} Bank se bol raha hoon. Agar aap payment karne ke liye taiyar hain, to main link WhatsApp ya SMS par bhej deta hoon.`
+    ][idx];
     return {
-      bot_text: `Main ${bankName} bank se bol raha hoon. Agar aap abhi pay kar rahe ho, to main aapko payment link bhej deta hoon.`,
+      bot_text: botText,
       state: 'BANK_NAME',
       is_terminal: false,
       intent: intent,
@@ -1210,12 +1293,111 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   // Global check for amount due question in non-terminal states
   if (intent === 'ASK_AMOUNT' && !terminalStates.includes(currentState)) {
     if (unclearRetriesRef) unclearRetriesRef.current = 0;
+    if (amountDisclosedRef) amountDisclosedRef.current = true;
+    const botText = [
+      `Aapka ${amount} rupaye ka amount due hai hamare bank mein.`,
+      `Aapka pending amount ₹${amount} due hai. Kripya isko clear karein.`,
+      `Hamare records ke mutabik aapka ₹${amount} ka outstanding amount pending hai.`
+    ][idx];
     return {
-      bot_text: `Aapka ${amount} rupaye ka amount due hai hamare bank mein.`,
+      bot_text: botText,
       state: 'AMOUNT_DUE',
       is_terminal: false,
       intent: intent,
       emotion: 'Cooperative'
+    };
+  }
+
+  // Global check for callbacks in non-terminal states
+  if (intent === 'CALLBACK' && currentState !== 'ASK_CALLBACK_TIME') {
+    if (unclearRetriesRef) unclearRetriesRef.current = 0;
+    const extractedTime = extractCallbackTime(userText);
+    if (extractedTime) {
+      const botText = [
+        `Maine aapka convenient callback time ${extractedTime} note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!`,
+        `Theek hai, maine schedule kar diya hai. Hum aapko ${extractedTime} par dobara contact karenge. Dhanyavaad!`,
+        `Ji okay, maine ${extractedTime} ka time note kar liya hai. Hum aapko usi samay call karenge. Aapka din shubh ho!`
+      ][idx];
+      return {
+        bot_text: botText,
+        state: 'CALL_ENDED_CALLBACK',
+        is_terminal: true,
+        intent: intent,
+        emotion: 'Cooperative'
+      };
+    } else {
+      const botText = [
+        "Aapko kis samay call karein? Taaki main convenient time note kar sakoon.",
+        "Kripya mujhe ek convenient time bata dijiye jab main aapse dobara baat kar sakoon.",
+        "Aap kis samay available rahenge call ke liye? Main wahi time note kar leta hoon."
+      ][idx];
+      return {
+        bot_text: botText,
+        state: 'ASK_CALLBACK_TIME',
+        is_terminal: false,
+        intent: intent,
+        emotion: 'Inquisitive'
+      };
+    }
+  }
+
+  // Global check for ALREADY_PAID in non-terminal states
+  if (intent === 'ALREADY_PAID' && !terminalStates.includes(currentState)) {
+    if (unclearRetriesRef) unclearRetriesRef.current = 0;
+    const dateIndicators = ["kal", "parso", "parson", "aaj", "subah", "shaam", "dopahar", "morning", "evening", "afternoon", "night", "raat", "yesterday", "today", "paid", "done", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "somwar", "mangalwar", "budhwar", "guruwar", "shukrawar", "shaniwar", "ravivar", "somvaar", "mangalvaar", "budhvaar", "guruvaar", "shukrawaar", "shaniwaar", "ravivaar", "कल", "परसों", "आज", "सुबह", "शाम", "दोपहर", "रात"];
+    const hasDate = dateIndicators.some(word => userText.toLowerCase().includes(word)) || normalizeRelativeDate(userText) || extractSpecificDate(userText);
+    if (hasDate) {
+      if (alreadyPaidRef) alreadyPaidRef.current = true;
+      const amountPrefix = (amountDisclosedRef && !amountDisclosedRef.current)
+        ? [
+            `Aapka ${amount} rupaye ka amount due hai hamare bank mein. `,
+            `Aapka pending amount ₹${amount} due hai. `,
+            `Hamare records ke mutabik aapka ₹${amount} ka outstanding amount pending hai. `
+          ][idx]
+        : "";
+      if (amountDisclosedRef) amountDisclosedRef.current = true;
+      const botText = amountPrefix + [
+        "Achha, theek hai. Maine note kar liya hai ki aapne payment kar diya hai. Main hamare records mein check kar leta hoon. Dhanyavaad.",
+        "Ji theek hai, maine note kar liya hai ki aapne payment kar diya hai. Hum records verify kar lenge. Dhanyavaad.",
+        "Theek hai, aapki payment details maine mark kar li hain. Main system mein update kar deta hoon. Dhanyavaad."
+      ][idx];
+      return {
+        bot_text: botText,
+        state: 'CALL_ENDED_SUCCESS',
+        is_terminal: true,
+        intent: intent,
+        emotion: 'Cooperative'
+      };
+    } else {
+      const botText = [
+        "Achha, aapne kab pay kiya tha? Main system mein check kar leta hoon.",
+        "Achha theek hai, kripya mujhe payment ki date bata dijiye taaki main check kar sakoon.",
+        "Achha okay, aapne kis tareekh ko payment kiya tha? Main system mein verify kar leta hoon."
+      ][idx];
+      return {
+        bot_text: botText,
+        state: 'ALREADY_PAID',
+        is_terminal: false,
+        intent: intent,
+        emotion: 'Cooperative'
+      };
+    }
+  }
+
+  // Global check for financial problem in non-terminal states
+  if (intent === 'FINANCIAL_PROBLEM' && !terminalStates.includes(currentState)) {
+    if (unclearRetriesRef) unclearRetriesRef.current = 0;
+    const botText = [
+      "Oh, mujhe sunkar dukh hua. Main samajh sakta hoon ki aap abhi financial problem mein hain. Main system mein mark kar deta hoon ki aap abhi pay nahi kar sakte. Hum aapse baad mein contact karenge. Dhanyavaad, apna khayal rakhiyega.",
+      "Oh, I am sorry to hear that. Main samajh sakta hoon ki pareshani hai. Main record mein mark kar deta hoon ki abhi payment possible nahi hai. Hum baad mein connect karenge. Dhanyavaad aur apna khayal rakhein.",
+      "Dukh hua sunkar. Pareshani ki wajah se main ise system mein note kar leta hoon. Hum aapse baad mein contact karenge. Dhanyavaad, apna dhyaan rakhiyega."
+    ][idx];
+    return {
+      bot_text: botText,
+      state: 'CALL_ENDED_FINANCIAL',
+      is_terminal: true,
+      intent: intent,
+      emotion: 'Apologetic'
     };
   }
 
@@ -1224,16 +1406,34 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
     if (unclearRetriesRef) unclearRetriesRef.current = 0;
     const normalizedDate = normalizeRelativeDate(userText) || extractSpecificDate(userText);
     if (normalizedDate) {
+      const amountPrefix = (amountDisclosedRef && !amountDisclosedRef.current)
+        ? [
+            `Aapka ${amount} rupaye ka amount due hai hamare bank mein. `,
+            `Aapka pending amount ₹${amount} due hai. `,
+            `Hamare records ke mutabik aapka ₹${amount} ka outstanding amount pending hai. `
+          ][idx]
+        : "";
+      if (amountDisclosedRef) amountDisclosedRef.current = true;
+      const botText = amountPrefix + [
+        `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`,
+        `Theek hai, maine check kiya aur aapki payment date ${normalizedDate} system mein mark kar li hai. Kripya yaad se pay kar dijiye. Dhanyavaad.`,
+        `Ji theek hai, maine ${normalizedDate} ko aapki payment ki commitment note kar li hai. Samay par bhugtan kar dijiye. Dhanyavaad.`
+      ][idx];
       return {
-        bot_text: `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`,
+        bot_text: botText,
         state: 'CALL_ENDED_SUCCESS',
         is_terminal: true,
         intent: intent,
         emotion: 'Cooperative'
       };
     } else {
+      const botText = [
+        'Aap kis date ko pay karenge? Taaki main system mein note kar sakoon.',
+        'Kripya mujhe date bata dijiye jab aap pay karenge, taaki main entry kar loon.',
+        'Aap kis tareekh tak payment kar denge? Main uski entry system mein kar deta hoon.'
+      ][idx];
       return {
-        bot_text: 'Aap kis date ko pay karenge? Taaki main system mein note kar sakoon.',
+        bot_text: botText,
         state: 'ASK_PAYMENT_DATE',
         is_terminal: false,
         intent: intent,
@@ -1242,53 +1442,26 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
     }
   }
 
-  // Global check for callbacks in non-terminal states
-  if (intent === 'CALLBACK' && currentState !== 'ASK_CALLBACK_TIME') {
-    const isGreeting = currentState === 'GREETING' || currentState === 'GREETING_IDENTITY_ASKED';
-    const hasAffirmWord = ["haan", "ha", "ji", "speaking", "main hi", "bol raha"].some(word => userText.toLowerCase().includes(word));
-    if (isGreeting && hasAffirmWord) {
-      intent = 'AFFIRM';
-    } else {
-      const extractedTime = extractCallbackTime(userText);
-      if (extractedTime) {
-        return {
-          bot_text: "Maine aapka convenient callback time note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!",
-          state: 'CALL_ENDED_CALLBACK',
-          is_terminal: true,
-          intent: intent,
-          emotion: 'Cooperative'
-        };
-      } else {
-        return {
-          bot_text: 'Aapko kis samay call karein? Taaki main convenient time note kar sakoon.',
-          state: 'ASK_CALLBACK_TIME',
-          is_terminal: false,
-          intent: intent,
-          emotion: 'Inquisitive'
-        };
-      }
-    }
-  }
-
   // Global check for angry / abusive in non-terminal states
   if ((intent === 'ANGRY' || intent === 'ABUSIVE') && !terminalStates.includes(currentState)) {
-    if (currentState === 'DE_ESCALATE') {
-      return {
-        bot_text: 'Koi baat nahi, hum aapse dobara contact karenge. Dhanyavaad.',
-        state: 'CALL_ENDED_REFUSED',
-        is_terminal: true,
-        intent: intent,
-        emotion: 'Defensive'
-      };
-    } else {
-      return {
-        bot_text: 'Maaf kijiye, hum aapko pareshan nahi karna chahte. Agar aap abhi payment nahi kar sakte to koi baat nahi.',
-        state: 'DE_ESCALATE',
-        is_terminal: false,
-        intent: intent,
-        emotion: 'Apologetic'
-      };
-    }
+    const botText = (currentState === 'DE_ESCALATE')
+      ? [
+          "Koi baat nahi, hum aapse dobara contact karenge. Dhanyavaad.",
+          "Theek hai, koi baat nahi. Hum baad mein baat karenge. Dhanyavaad.",
+          "Okay, main samajh gaya. Hum aapse baad mein contact karenge. Dhanyavaad."
+        ][idx]
+      : [
+          "Maaf kijiye, hum aapko pareshan nahi karna chahte. Agar aap abhi payment nahi kar sakte to koi baat nahi.",
+          "Maaf kijiye, hamara maksad aapko pareshan karna nahi tha. Agar payment abhi nahi ho sakti to hum baad mein contact kar lenge.",
+          "I am sorry, hum aapko disturb nahi karna chahte. Agar abhi payment possible nahi hai to koi baat nahi."
+        ][idx];
+    return {
+      bot_text: botText,
+      state: (currentState === 'DE_ESCALATE') ? 'CALL_ENDED_REFUSED' : 'DE_ESCALATE',
+      is_terminal: (currentState === 'DE_ESCALATE'),
+      intent: intent,
+      emotion: (currentState === 'DE_ESCALATE') ? 'Defensive' : 'Apologetic'
+    };
   }
 
   // Global check for sensitive queries in non-terminal states
@@ -1304,8 +1477,13 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
 
   // Global check for human agent request in non-terminal states
   if (intent === 'HUMAN_AGENT' && !terminalStates.includes(currentState)) {
+    const botText = [
+      "Hum samajh sakte hain. Main aapki call hamare senior representative ya manager ko transfer kar raha hoon. Kripya line par bane rahein. Dhanyavaad.",
+      "Ji main samajh raha hoon. Main aapki call senior department ya manager ko forward kar raha hoon. Kripya line hold kijiye. Dhanyavaad.",
+      "Theek hai. Is vishay par baat karne ke liye main call manager ko connect kar raha hoon. Kripya line par bane rahein. Dhanyavaad."
+    ][idx];
     return {
-      bot_text: "Hum samajh sakte hain. Main aapki call hamare senior representative ya manager ko transfer kar raha hoon. Kripya line par bane rahein. Dhanyavaad.",
+      bot_text: botText,
       state: 'CALL_ENDED_ESCALATED',
       is_terminal: true,
       intent: intent,
@@ -1362,51 +1540,53 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
 
   if (currentState === 'GREETING' || currentState === 'GREETING_IDENTITY_ASKED') {
     if (intent === 'ASK_IDENTITY' || intent === 'ASK_BANK') {
+      const botText = [
+        `Main ${bankName} Bank se bol raha hoon. Yeh call aapke pending personal due amount ke payment ke baare mein hai. Kya meri baat ${customerName} se ho rahi hai?`,
+        `Ji main ${bankName} Bank se baat kar raha hoon aapke pending due ke silsile mein. Kya meri baat ${customerName} ji se ho rahi hai?`,
+        `Main ${bankName} Bank se bol raha hoon aapke due amount ke regarding. Kya main ${customerName} ji se baat kar sakta hoon?`
+      ][idx];
       return {
-        bot_text: `Main ${bankName} Bank se bol raha hoon. Yeh call aapke pending personal due amount ke payment ke baare mein hai. Kya meri baat ${customerName} se ho rahi hai?`,
+        bot_text: botText,
         state: 'GREETING_IDENTITY_ASKED',
         is_terminal: false,
         intent: intent,
         emotion: 'Inquisitive'
       };
     } else if (intent === 'FINANCIAL_PROBLEM') {
+      const botText = [
+        "Oh, mujhe sunkar dukh hua. Main samajh sakta hoon ki aap abhi financial problem mein hain. Main system mein mark kar deta hoon ki aap abhi pay nahi kar sakte. Hum aapse baad mein contact karenge. Dhanyavaad, apna khayal rakhiyega.",
+        "Oh, I am sorry to hear that. Main samajh sakta hoon ki pareshani hai. Main record mein mark kar deta hoon ki abhi payment possible nahi hai. Hum baad mein connect karenge. Dhanyavaad aur apna khayal rakhein.",
+        "Dukh hua sunkar. Pareshani ki wajah se main ise system mein note kar leta hoon. Hum aapse baad mein contact karenge. Dhanyavaad, apna dhyaan rakhiyega."
+      ][idx];
       return {
-        bot_text: 'Oh, mujhe sunkar dukh hua. Main samajh sakta hoon ki aap abhi financial problem mein hain. Main system mein mark kar deta hoon ki aap abhi pay nahi kar sakte. Hum aapse baad mein contact karenge. Dhanyavaad, apna khayal rakhiyega.',
+        bot_text: botText,
         state: 'CALL_ENDED_FINANCIAL',
         is_terminal: true,
         intent: intent,
         emotion: 'Apologetic'
       };
-    } else if (intent === 'PROMISE_TO_PAY') {
-      const normalizedDate = normalizeRelativeDate(userText) || extractSpecificDate(userText);
-      if (normalizedDate) {
-        return {
-          bot_text: `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`,
-          state: 'CALL_ENDED_SUCCESS',
-          is_terminal: true,
-          intent: intent,
-          emotion: 'Cooperative'
-        };
-      } else {
-        return {
-          bot_text: 'Aap kis date ko pay karenge? Taaki main system mein note kar sakoon.',
-          state: 'ASK_PAYMENT_DATE',
-          is_terminal: false,
-          intent: intent,
-          emotion: 'Inquisitive'
-        };
-      }
     } else if (intent === 'ASK_AMOUNT' || intent === 'ASK_LINK' || intent === 'AFFIRM' || intent === 'ACKNOWLEDGE') {
+      if (amountDisclosedRef) amountDisclosedRef.current = true;
+      const botText = [
+        `Aapka ${amount} rupaye ka amount due hai hamare bank mein.`,
+        `Aapka pending amount ₹${amount} due hai. Kripya isko clear karein.`,
+        `Hamare records ke mutabik aapka ₹${amount} ka outstanding amount pending hai.`
+      ][idx];
       return {
-        bot_text: `Aapka ${amount} rupaye ka amount due hai hamare bank mein.`,
+        bot_text: botText,
         state: 'AMOUNT_DUE',
         is_terminal: false,
         intent: intent,
         emotion: 'Cooperative'
       };
     } else if (intent === 'DENY' || intent === 'WRONG_PERSON') {
+      const botText = [
+        `Achha okay. Kya meri baat ${customerName} ji se ho sakti hai? Main ${bankName} Bank se bol raha hoon.`,
+        `Theek hai. Kya aap meri baat ${customerName} ji se karwa sakte hain? Main ${bankName} Bank se bol raha hoon.`,
+        `Achha, to kya ${customerName} ji ghar par hain? Unse baat karwa dijiye please, main ${bankName} Bank se bol raha hoon.`
+      ][idx];
       return {
-        bot_text: `Achha okay. Kya meri baat ${customerName} ji se ho sakti hai? Main ${bankName} Bank se bol raha hoon.`,
+        bot_text: botText,
         state: 'ASK_JITESH',
         is_terminal: false,
         intent: intent,
@@ -1425,16 +1605,27 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
 
   if (currentState === 'ASK_JITESH') {
     if (intent === 'AFFIRM' || intent === 'ACKNOWLEDGE') {
+      if (amountDisclosedRef) amountDisclosedRef.current = true;
+      const botText = [
+        `Aapka ${amount} rupaye ka amount due hai hamare bank mein.`,
+        `Aapka pending amount ₹${amount} due hai. Kripya isko clear karein.`,
+        `Hamare records ke mutabik aapka ₹${amount} ka outstanding amount pending hai.`
+      ][idx];
       return {
-        bot_text: `Hello, kya meri baat ${customerName} se ho rahi hai?`,
-        state: 'GREETING',
+        bot_text: botText,
+        state: 'AMOUNT_DUE',
         is_terminal: false,
         intent: intent,
         emotion: 'Cooperative'
       };
     } else if (intent === 'DENY' || intent === 'WRONG_PERSON') {
+      const botText = [
+        "Oh sorry, lagta hai mujhe wrong number mil gaya. Maaf kijiye, dhanyavaad.",
+        "Oh sorry, shayad number galat mil gaya hai. Disturb karne ke liye maaf kijiye, dhanyavaad.",
+        "I am sorry, lagta hai yeh galat number hai. Maaf kijiye, dhanyavaad."
+      ][idx];
       return {
-        bot_text: "Oh sorry, lagta hai mujhe wrong number mil gaya. Maaf kijiye, dhanyavaad.",
+        bot_text: botText,
         state: 'CALL_ENDED_WRONG_NUMBER',
         is_terminal: true,
         intent: intent,
@@ -1453,59 +1644,52 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
 
   if (currentState === 'AMOUNT_DUE' || currentState === 'DE_ESCALATE') {
     if (intent === 'ASK_IDENTITY' || intent === 'ASK_BANK') {
+      const botText = [
+        `Main ${bankName} bank se bol raha hoon. Agar aap abhi pay kar rahe ho, to main aapko payment link bhej deta hoon.`,
+        `Main ${bankName} Bank se baat kar raha hoon. Agar aap abhi payment karna chahte hain, to main abhi link bhej deta hoon.`,
+        `Ji main ${bankName} Bank se bol raha hoon. Agar aap payment karne ke liye taiyar hain, to main link WhatsApp ya SMS par bhej deta hoon.`
+      ][idx];
       return {
-        bot_text: `Main ${bankName} bank se bol raha hoon. Agar aap abhi pay kar rahe ho, to main aapko payment link bhej deta hoon.`,
+        bot_text: botText,
         state: 'BANK_NAME',
         is_terminal: false,
         intent: intent,
         emotion: 'Inquisitive'
       };
     } else if (intent === 'ALREADY_PAID') {
+      const botText = [
+        "Achha, aapne kab pay kiya tha? Main system mein check kar leta hoon.",
+        "Achha theek hai, kripya mujhe payment ki date bata dijiye taaki main check kar sakoon.",
+        "Achha okay, aapne kis tareekh ko payment kiya tha? Main system mein verify kar leta hoon."
+      ][idx];
       return {
-        bot_text: 'Achha, aapne kab pay kiya tha? Main system mein check kar leta hoon.',
+        bot_text: botText,
         state: 'ALREADY_PAID',
         is_terminal: false,
         intent: intent,
         emotion: 'Cooperative'
       };
     } else if (intent === 'FINANCIAL_PROBLEM') {
+      const botText = [
+        "Oh, mujhe sunkar dukh hua. Main samajh sakta hoon ki aap abhi financial problem mein hain. Main system mein mark kar deta hoon ki aap abhi pay nahi kar sakte. Hum aapse baad mein contact karenge. Dhanyavaad, apna khayal rakhiyega.",
+        "Oh, I am sorry to hear that. Main samajh sakta hoon ki pareshani hai. Main record mein mark kar deta hoon ki abhi payment possible nahi hai. Hum baad mein connect karenge. Dhanyavaad aur apna khayal rakhein.",
+        "Dukh hua sunkar. Pareshani ki wajah se main ise system mein note kar leta hoon. Hum aapse baad mein contact karenge. Dhanyavaad, apna dhyaan rakhiyega."
+      ][idx];
       return {
-        bot_text: 'Oh, mujhe sunkar dukh hua. Main samajh sakta hoon ki aap abhi financial problem mein hain. Main system mein mark kar deta hoon ki aap abhi pay nahi kar sakte. Hum aapse baad mein contact karenge. Dhanyavaad, apna khayal rakhiyega.',
+        bot_text: botText,
         state: 'CALL_ENDED_FINANCIAL',
         is_terminal: true,
         intent: intent,
         emotion: 'Apologetic'
       };
-    } else if (intent === 'PROMISE_TO_PAY') {
-      const normalizedDate = normalizeRelativeDate(userText) || extractSpecificDate(userText);
-      if (normalizedDate) {
-        return {
-          bot_text: `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`,
-          state: 'CALL_ENDED_SUCCESS',
-          is_terminal: true,
-          intent: intent,
-          emotion: 'Cooperative'
-        };
-      } else {
-        return {
-          bot_text: 'Aap kis date ko pay karenge? Taaki main system mein note kar sakoon.',
-          state: 'ASK_PAYMENT_DATE',
-          is_terminal: false,
-          intent: intent,
-          emotion: 'Inquisitive'
-        };
-      }
-    } else if (intent === 'ANGRY' || intent === 'ABUSIVE') {
-      return {
-        bot_text: 'Maaf kijiye, hum aapko pareshan nahi karna chahte. Agar aap abhi payment nahi kar sakte to koi baat nahi.',
-        state: 'DE_ESCALATE',
-        is_terminal: false,
-        intent: intent,
-        emotion: 'Apologetic'
-      };
     } else if (intent === 'ASK_LINK') {
+      const botText = [
+        "Theek hai, maine aapko payment link bhej diya hai aapke number par. Dhanyavaad, aapka din shubh ho!",
+        "Sure, payment link aapke number par send kar diya hai. Kripya check kijiye aur pay kar dijiye. Dhanyavaad!",
+        "Theek hai, link aapko send ho gaya hai. Aap usse abhi pay kar sakte hain. Bahut-bahut dhanyavaad!"
+      ][idx];
       return {
-        bot_text: 'Theek hai, maine aapko payment link bhej diya hai aapke number par. Dhanyavaad, aapka din shubh ho!',
+        bot_text: botText,
         state: 'PAYMENT_CONFIRM',
         is_terminal: true,
         intent: intent,
@@ -1515,16 +1699,26 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
       const linkKeywords = ["link", "bhej", "send", "whatsapp", "sms", "message", "qr", "upi", "paytm", "gpay", "phonepe"];
       const hasLinkKW = linkKeywords.some(kw => userText.toLowerCase().includes(kw));
       if (hasLinkKW) {
+        const botText = [
+          "Theek hai, maine aapko payment link bhej diya hai aapke number par. Dhanyavaad, aapka din shubh ho!",
+          "Sure, payment link aapke number par send kar diya hai. Kripya check kijiye aur pay kar dijiye. Dhanyavaad!",
+          "Theek hai, link aapko send ho gaya hai. Aap usse abhi pay kar sakte hain. Bahut-bahut dhanyavaad!"
+        ][idx];
         return {
-          bot_text: 'Theek hai, maine aapko payment link bhej diya hai aapke number par. Dhanyavaad, aapka din shubh ho!',
+          bot_text: botText,
           state: 'PAYMENT_CONFIRM',
           is_terminal: true,
           intent: 'AFFIRM',
           emotion: 'Cooperative'
         };
       } else {
+        const botText = [
+          `Main ${bankName} bank se bol raha hoon. Agar aap abhi pay kar rahe ho, to main aapko payment link bhej deta hoon.`,
+          `Main ${bankName} Bank se baat kar raha hoon. Agar aap abhi payment karna chahte hain, to main abhi link bhej deta hoon.`,
+          `Ji main ${bankName} Bank se bol raha hoon. Agar aap payment karne ke liye taiyar hain, to main link WhatsApp ya SMS par bhej deta hoon.`
+        ][idx];
         return {
-          bot_text: `Main ${bankName} bank se bol raha hoon. Agar aap abhi pay kar rahe ho, to main aapko payment link bhej deta hoon.`,
+          bot_text: botText,
           state: 'BANK_NAME',
           is_terminal: false,
           intent: 'AFFIRM',
@@ -1532,8 +1726,13 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
         };
       }
     } else if (intent === 'DENY') {
+      const botText = [
+        "Koi baat nahi, hum aapse dobara contact karenge. Dhanyavaad.",
+        "Theek hai, koi baat nahi. Hum baad mein baat karenge. Dhanyavaad.",
+        "Okay, main samajh gaya. Hum aapse baad mein contact karenge. Dhanyavaad."
+      ][idx];
       return {
-        bot_text: 'Koi baat nahi, hum aapse dobara contact karenge. Dhanyavaad.',
+        bot_text: botText,
         state: 'CALL_ENDED_REFUSED',
         is_terminal: true,
         intent: 'DENY',
@@ -1552,16 +1751,26 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
 
   if (currentState === 'BANK_NAME') {
     if (intent === 'AFFIRM' || intent === 'ACKNOWLEDGE' || intent === 'ASK_LINK') {
+      const botText = [
+        "Theek hai, maine aapko payment link bhej diya hai aapke number par. Dhanyavaad, aapka din shubh ho!",
+        "Sure, payment link aapke number par send kar diya hai. Kripya check kijiye aur pay kar dijiye. Dhanyavaad!",
+        "Theek hai, link aapko send ho gaya hai. Aap usse abhi pay kar sakte hain. Bahut-bahut dhanyavaad!"
+      ][idx];
       return {
-        bot_text: 'Theek hai, maine aapko payment link bhej diya hai aapke number par. Dhanyavaad, aapka din shubh ho!',
+        bot_text: botText,
         state: 'PAYMENT_CONFIRM',
         is_terminal: true,
         intent: intent,
         emotion: 'Cooperative'
       };
     } else if (intent === 'DENY') {
+      const botText = [
+        "Koi baat nahi, hum aapse dobara contact karenge. Dhanyavaad.",
+        "Theek hai, koi baat nahi. Hum baad mein baat karenge. Dhanyavaad.",
+        "Okay, main samajh gaya. Hum aapse baad mein contact karenge. Dhanyavaad."
+      ][idx];
       return {
-        bot_text: 'Koi baat nahi, hum aapse dobara contact karenge. Dhanyavaad.',
+        bot_text: botText,
         state: 'CALL_ENDED_REFUSED',
         is_terminal: true,
         intent: 'DENY',
@@ -1579,10 +1788,32 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   }
 
   if (currentState === 'ASK_PAYMENT_DATE') {
+    if (intent === 'DENY') {
+      const botText = [
+        "Koi baat nahi, hum aapse dobara contact karenge. Dhanyavaad.",
+        "Theek hai, koi baat nahi. Hum baad mein baat karenge. Dhanyavaad.",
+        "Okay, main samajh gaya. Hum aapse baad mein contact karenge. Dhanyavaad."
+      ][idx];
+      return {
+        bot_text: botText,
+        state: 'CALL_ENDED_REFUSED',
+        is_terminal: true,
+        intent: intent,
+        emotion: 'Defensive'
+      };
+    }
     const normalizedDate = normalizeRelativeDate(userText) || extractSpecificDate(userText);
     const botText = normalizedDate 
-      ? `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`
-      : `Theek hai, maine aapki payment commitment note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`;
+      ? [
+          `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`,
+          `Theek hai, maine check kiya aur aapki payment date ${normalizedDate} system mein mark kar li hai. Kripya yaad se pay kar dijiye. Dhanyavaad.`,
+          `Ji theek hai, maine ${normalizedDate} ko aapki payment ki commitment note kar li hai. Samay par bhugtan kar dijiye. Dhanyavaad.`
+        ][idx]
+      : [
+          "Theek hai, maine aapki payment commitment note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.",
+          "Achha theek hai, maine aapki commitment note kar li hai. Kripya time par pay kar dijiye. Dhanyavaad.",
+          "Ji, maine aapki payment commitment system mein register kar li hai. Dhanyavaad."
+        ][idx];
     return {
       bot_text: botText,
       state: 'CALL_ENDED_SUCCESS',
@@ -1593,10 +1824,29 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   }
 
   if (currentState === 'ASK_CALLBACK_TIME') {
+    if (intent === 'DENY') {
+      const botText = [
+        "Koi baat nahi, hum aapse dobara contact karenge. Dhanyavaad.",
+        "Theek hai, koi baat nahi. Hum baad mein baat karenge. Dhanyavaad.",
+        "Okay, main samajh gaya. Hum aapse baad mein contact karenge. Dhanyavaad."
+      ][idx];
+      return {
+        bot_text: botText,
+        state: 'CALL_ENDED_REFUSED',
+        is_terminal: true,
+        intent: intent,
+        emotion: 'Defensive'
+      };
+    }
     const extractedTime = extractCallbackTime(userText);
     if (extractedTime) {
+      const botText = [
+        `Maine aapka convenient callback time ${extractedTime} note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!`,
+        `Theek hai, maine schedule kar diya hai. Hum aapko ${extractedTime} par dobara contact karenge. Dhanyavaad!`,
+        `Ji okay, maine ${extractedTime} ka time note kar liya hai. Hum aapko usi samay call karenge. Aapka din shubh ho!`
+      ][idx];
       return {
-        bot_text: "Maine aapka convenient callback time note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!",
+        bot_text: botText,
         state: 'CALL_ENDED_CALLBACK',
         is_terminal: true,
         intent: intent,
@@ -1614,8 +1864,14 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   }
 
   if (currentState === 'ALREADY_PAID') {
+    if (alreadyPaidRef) alreadyPaidRef.current = true;
+    const botText = [
+      "Achha, theek hai. Maine note kar liya hai ki aapne payment kar diya hai. Main hamare records mein check kar leta hoon. Dhanyavaad.",
+      "Ji theek hai, maine note kar liya hai ki aapne payment kar diya hai. Hum records verify kar lenge. Dhanyavaad.",
+      "Theek hai, aapki payment details maine mark kar li hain. Main system mein update kar deta hoon. Dhanyavaad."
+    ][idx];
     return {
-      bot_text: 'Theek hai, main hamare records mein check kar leta hoon. Dhanyavaad.',
+      bot_text: botText,
       state: 'CALL_ENDED_SUCCESS',
       is_terminal: true,
       intent: intent,
@@ -1625,16 +1881,26 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
 
   if (currentState === 'DUE_DATE' || currentState === 'WRONG_AMOUNT' || currentState === 'NEGOTIATE') {
     if (intent === 'AFFIRM' || intent === 'ACKNOWLEDGE' || intent === 'ASK_LINK') {
+      const botText = [
+        "Theek hai, maine aapko payment link bhej diya hai aapke number par. Dhanyavaad, aapka din shubh ho!",
+        "Sure, payment link aapke number par send kar diya hai. Kripya check kijiye aur pay kar dijiye. Dhanyavaad!",
+        "Theek hai, link aapko send ho gaya hai. Aap usse abhi pay kar sakte hain. Bahut-bahut dhanyavaad!"
+      ][idx];
       return {
-        bot_text: 'Theek hai, maine aapko payment link bhej diya hai aapke number par. Dhanyavaad, aapka din shubh ho!',
+        bot_text: botText,
         state: 'PAYMENT_CONFIRM',
         is_terminal: true,
         intent: intent,
         emotion: 'Cooperative'
       };
     } else if (intent === 'DENY') {
+      const botText = [
+        "Koi baat nahi, hum aapse dobara contact karenge. Dhanyavaad.",
+        "Theek hai, koi baat nahi. Hum baad mein baat karenge. Dhanyavaad.",
+        "Okay, main samajh gaya. Hum aapse baad mein contact karenge. Dhanyavaad."
+      ][idx];
       return {
-        bot_text: 'Koi baat nahi, hum aapse dobara contact karenge. Dhanyavaad.',
+        bot_text: botText,
         state: 'CALL_ENDED_REFUSED',
         is_terminal: true,
         intent: 'DENY',
@@ -1683,8 +1949,13 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   // CONSEQUENCES_EXPLAINED state handler
   if (currentState === 'CONSEQUENCES_EXPLAINED') {
     if (intent === 'AFFIRM' || intent === 'ACKNOWLEDGE' || intent === 'ASK_LINK') {
+      const botText = [
+        "Theek hai, maine aapko payment link bhej diya hai aapke number par. Dhanyavaad, aapka din shubh ho!",
+        "Sure, payment link aapke number par send kar diya hai. Kripya check kijiye aur pay kar dijiye. Dhanyavaad!",
+        "Theek hai, link aapko send ho gaya hai. Aap usse abhi pay kar sakte hain. Bahut-bahut dhanyavaad!"
+      ][idx];
       return {
-        bot_text: 'Theek hai, maine aapko payment link bhej diya hai aapke number par. Dhanyavaad, aapka din shubh ho!',
+        bot_text: botText,
         state: 'PAYMENT_CONFIRM',
         is_terminal: true,
         intent: intent,
@@ -1693,8 +1964,16 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
     } else if (intent === 'PROMISE_TO_PAY') {
       const normalizedDate = normalizeRelativeDate(userText) || extractSpecificDate(userText);
       const botText = normalizedDate 
-        ? `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`
-        : `Theek hai, maine aapki payment commitment note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`;
+        ? [
+            `Maine aapki payment ${normalizedDate} ke liye note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.`,
+            `Theek hai, maine check kiya aur aapki payment date ${normalizedDate} system mein mark kar li hai. Kripya yaad se pay kar dijiye. Dhanyavaad.`,
+            `Ji theek hai, maine ${normalizedDate} ko aapki payment ki commitment note kar li hai. Samay par bhugtan kar dijiye. Dhanyavaad.`
+          ][idx]
+        : [
+            "Theek hai, maine aapki payment commitment note kar li hai. Kripya usi din payment kar dijiye. Dhanyavaad.",
+            "Achha theek hai, maine aapki commitment note kar li hai. Kripya time par pay kar dijiye. Dhanyavaad.",
+            "Ji, maine aapki payment commitment system mein register kar li hai. Dhanyavaad."
+          ][idx];
       return {
         bot_text: botText,
         state: 'CALL_ENDED_SUCCESS',
@@ -1703,8 +1982,13 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
         emotion: 'Cooperative'
       };
     } else if (intent === 'DENY' || intent === 'MAYBE') {
+      const botText = [
+        "Koi baat nahi, hum aapse dobara contact karenge. Aapka dhanyavaad.",
+        "Theek hai, koi baat nahi. Hum baad mein baat karenge. Dhanyavaad.",
+        "Okay, main samajh gaya. Hum aapse baad mein contact karenge. Dhanyavaad."
+      ][idx];
       return {
-        bot_text: 'Koi baat nahi, hum aapse dobara contact karenge. Aapka dhanyavaad.',
+        bot_text: botText,
         state: 'CALL_ENDED_REFUSED',
         is_terminal: true,
         intent: intent,
@@ -1721,8 +2005,13 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
     }
   }
 
+  const botText = [
+    "Theek hai, main baad mein call karta hoon. Dhanyavaad.",
+    "Lagta hai network issues hain. Hum baad mein contact karenge. Dhanyavaad.",
+    "Awaaz theek se nahi aa rahi hai. Hum baad mein call karenge. Dhanyavaad."
+  ][idx];
   return {
-    bot_text: 'Theek hai, main baad mein call karta hoon. Dhanyavaad.',
+    bot_text: botText,
     state: 'CALL_ENDED_UNCLEAR',
     is_terminal: true,
     intent: 'UNCLEAR',
@@ -1957,6 +2246,8 @@ export default function VoiceBot() {
   const isMutedRef = useRef(false);
   const lastBotSpokenTextRef = useRef('');
   const unclearRetriesRef = useRef(0);
+  const amountDisclosedRef = useRef(false);
+  const alreadyPaidRef = useRef(false);
   // Processing lock — prevents duplicate turns from overlapping
   const isProcessingTurnRef = useRef(false);
   // Silence detection — count how many consecutive no-speech events occurred while not speaking
@@ -2632,6 +2923,8 @@ export default function VoiceBot() {
     hasMicErrorRef.current = false;
     consecutiveSpeechErrorsRef.current = 0;
     unclearRetriesRef.current = 0;
+    amountDisclosedRef.current = false;
+    alreadyPaidRef.current = false;
     isProcessingTurnRef.current = false;
     silenceCountRef.current = 0;
     apiRetryCountRef.current = 0;
@@ -2913,7 +3206,7 @@ export default function VoiceBot() {
 
     if (currentMockMode) {
       setTimeout(() => {
-        const mockResult = simulateMockReply(userText, currentStateRef.current, customerName, amount, bankName, unclearRetriesRef);
+        const mockResult = simulateMockReply(userText, currentStateRef.current, customerName, amount, bankName, unclearRetriesRef, amountDisclosedRef, alreadyPaidRef);
         console.log(`[LLM-MOCK] State: ${mockResult.state}, Intent: ${mockResult.intent}, Terminal: ${mockResult.is_terminal}`);
         console.log(`[LLM-MOCK] Bot: "${mockResult.bot_text}"`);
 
