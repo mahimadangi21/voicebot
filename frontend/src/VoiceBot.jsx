@@ -823,6 +823,60 @@ const getPaymentConfirmText = (userText) => {
   }
 };
 
+const devanagariToLatin = (text) => {
+  if (!text) return "";
+  const mapping = {
+    'अ': 'a', 'आ': 'a', 'इ': 'i', 'ई': 'i', 'उ': 'u', 'ऊ': 'u', 'ऋ': 'ri',
+    'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'अं': 'n', 'अः': 'h',
+    'ा': 'a', 'ि': 'i', 'ी': 'i', 'ु': 'u', 'ू': 'u', 'ृ': 'ri',
+    'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ं': 'n', 'ः': 'h',
+    'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'n',
+    'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'n',
+    'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
+    'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
+    'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm',
+    'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h',
+    'क्ष': 'ksh', 'त्र': 'tr', 'ज्ञ': 'gy', 'श्र': 'shr',
+    'क़': 'q', 'ख़': 'kh', 'ग़': 'g', 'ज़': 'z', 'ड़': 'd', 'ढ़': 'dh', 'फ़': 'f',
+    '़': '', '्': ''
+  };
+
+  const consonants = new Set("कखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसहक्षत्रज्ञश्रक़ख़ग़ज़ड़ढ़फ़");
+  const vowelsSigns = new Set("ािीुूृेैोौूंः");
+
+  const result = [];
+  const chars = Array.from(text);
+  let i = 0;
+  while (i < chars.length) {
+    const char = chars[i];
+    if (i + 1 < chars.length && mapping[char + chars[i + 1]] !== undefined) {
+      result.push(mapping[char + chars[i + 1]]);
+      i += 2;
+      continue;
+    }
+
+    if (mapping[char] !== undefined) {
+      result.push(mapping[char]);
+      if (consonants.has(char)) {
+        let nextIsVowel = false;
+        if (i + 1 < chars.length) {
+          const nextChar = chars[i + 1];
+          if (vowelsSigns.has(nextChar) || nextChar === '्' || nextChar === ' ') {
+            nextIsVowel = true;
+          }
+        }
+        if (!nextIsVowel && i + 1 < chars.length && chars[i + 1].trim()) {
+          result.push('a');
+        }
+      }
+    } else {
+      result.push(char);
+    }
+    i++;
+  }
+  return result.join("");
+};
+
 const checkFuzzyMatch = (word1, word2) => {
   const w1 = (word1 || "").toLowerCase().trim();
   const w2 = (word2 || "").toLowerCase().trim();
@@ -852,6 +906,7 @@ const checkFuzzyMatch = (word1, word2) => {
 
 const detectIntent = (text, customerName = null) => {
   const clean = text.toLowerCase().trim();
+  const latinText = devanagariToLatin(clean);
 
   // 0. Check silence
   if (!clean || clean === '[silence]') {
@@ -948,18 +1003,24 @@ const detectIntent = (text, customerName = null) => {
     // Name mismatch check
     const expectedParts = nameLower.split(/\s+/).map(p => p.trim()).filter(Boolean);
     const nameMatchPatterns = [
-      /(?:main|मैं)\s+([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:bol|hoon|hu|बोल|हूं|हूँ|bolta|bolti|raha|rahi)(?:\s|$|[.,!?])/i,
-      /(?:mera\s+naam|मेरा\s+नाम)\s+([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:hai|है|he)(?:\s|$|[.,!?])/i,
-      /([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:bol\s+raha|bol\s+rahi|बोल\s+रहा|बोल\s+रही)(?:\s|$|[.,!?])/i,
+      /(?:main|मैं|mai)\s+([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:bol|hoon|hu|बोल|हूं|हूँ|bolta|bolti|raha|rahi)(?:\s|$|[.,!?])/i,
+      /(?:mera\s+naam|मेरा\s+नाम|mera\s+nam)\s+([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:hai|है|he)(?:\s|$|[.,!?])/i,
+      /([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:bol\s+raha|bol\s+rahi|बोल\s+रहा|बोल\s+रही|bol\s+rahe)(?:\s|$|[.,!?])/i,
       /this\s+is\s+([a-zA-Z]+|[\u0900-\u097F]+)(?:\s|$|[.,!?])/i,
       /([a-zA-Z]+|[\u0900-\u097F]+)\s+speaking(?:\s|$|[.,!?])/i
+    ];
+    const ignoreList = [
+      "unka", "uska", "apka", "aapka", "kya", "mera", "mai", "main", "bol", "hi", "he", "hee", "h", "ji", "ko",
+      "ka", "ki", "ke", "se", "par", "bhi", "toh", "to", "hoon", "hu", "ha", "haan",
+      "उनका", "उसका", "आपका", "क्या", "मेरा", "मेरी", "मेरे", "मै", "मैं", "बोल", "ही", "है", "ह", "जी", "को",
+      "का", "की", "के", "से", "पर", "भी", "तो", "हूं", "हूँ", "हाँ", "हां"
     ];
     for (const pat of nameMatchPatterns) {
       const m = pat.exec(clean);
       if (m) {
         const extracted = m[1].toLowerCase().trim();
-        const ignoreList = ["unka", "uska", "apka", "aapka", "kya", "mera", "mai", "main", "bol", "hi", "he", "hee", "h", "ji", "ko"];
-        if (extracted && !expectedParts.includes(extracted) && !ignoreList.includes(extracted)) {
+        const extractedLatin = devanagariToLatin(extracted);
+        if (extractedLatin && !expectedParts.includes(extractedLatin) && !ignoreList.includes(extractedLatin) && !ignoreList.includes(extracted)) {
           return 'WRONG_PERSON';
         }
       }
@@ -1023,16 +1084,20 @@ const detectIntent = (text, customerName = null) => {
     const words = clean.match(/[a-zA-Z\u0900-\u097F]+/g) || [];
     if (words.length === 1) {
       const w = words[0];
+      const wLatin = devanagariToLatin(w);
       let isExpected = false;
       for (const part of expectedParts) {
-        if (part.length >= 3 && checkFuzzyMatch(w, part)) {
+        if (part.length >= 3 && (checkFuzzyMatch(w, part) || checkFuzzyMatch(wLatin, part))) {
           isExpected = true;
           break;
         }
       }
       if (!isExpected) {
-        const ignoreWords = ["haan", "ha", "han", "haa", "ji", "yes", "y", "ok", "okay", "no", "nah", "nahi", "nahin", "naa", "correct", "wrong", "galat", "hello", "hi", "speaking", "हाँ", "जी", "ठीक", "हां", "नहीं", "नही"];
-        if (!ignoreWords.includes(w)) {
+        const ignoreWords = [
+          "haan", "ha", "han", "haa", "ji", "yes", "y", "ok", "okay", "no", "nah", "nahi", "nahin", "naa", "correct", "wrong", "galat", "hello", "hi", "speaking",
+          "हाँ", "जी", "ठीक", "हां", "नहीं", "नही", "ही", "भी", "तो"
+        ];
+        if (!ignoreWords.includes(w) && !ignoreWords.includes(wLatin)) {
           return 'WRONG_PERSON';
         }
       }
@@ -1046,14 +1111,17 @@ const detectIntent = (text, customerName = null) => {
   // 4b. Fuzzy identity name confirmation check
   if (customerName) {
     const expectedParts = customerName.toLowerCase().split(/\s+/).map(p => p.trim()).filter(p => p.length >= 3);
-    const words = clean.split(/\s+/).map(p => p.trim()).filter(Boolean);
+    const wordsRaw = clean.match(/[a-zA-Z\u0900-\u097F]+/g) || [];
+    const wordsLatin = latinText.match(/\b\w+\b/g) || [];
+    const allWords = Array.from(new Set([...wordsRaw, ...wordsLatin]));
+    
     let hasNameMatch = false;
     for (const part of expectedParts) {
-      if (clean === part || checkFuzzyMatch(clean, part)) {
+      if (clean === part || latinText === part || checkFuzzyMatch(clean, part) || checkFuzzyMatch(latinText, part)) {
         hasNameMatch = true;
         break;
       }
-      for (const w of words) {
+      for (const w of allWords) {
         if (checkFuzzyMatch(w, part)) {
           hasNameMatch = true;
           break;

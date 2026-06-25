@@ -28,6 +28,12 @@ def run_test():
     print(f"USER: {reply1} -> Detected Intent: {intent1.value}")
     assert intent1 == Intent.AFFIRM, f"Expected Intent.AFFIRM, got {intent1}"
     
+    # User confirms in Devanagari with 'hi' particle
+    reply1_dev = "हाँ मैं महिमा डांगी ही बोल रही हूं"
+    intent1_dev = detect_intent(reply1_dev, ctx1.name)
+    print(f"USER: {reply1_dev} -> Detected Intent: {intent1_dev.value}")
+    assert intent1_dev == Intent.AFFIRM, f"Expected Intent.AFFIRM, got {intent1_dev}"
+    
     bot_reply = process_user_reply(ctx1, reply1)
     print(f"BOT Reply: {bot_reply}")
     print(f"New State: {ctx1.state.name}")

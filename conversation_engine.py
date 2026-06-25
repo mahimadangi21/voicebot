@@ -887,6 +887,58 @@ def extract_callback_time(text: str) -> str | None:
     if any(re.search(pat, cleaned) for pat in time_patterns):
         return clean_callback_time(text)
         
+def devanagari_to_latin(text: str) -> str:
+    """
+    Transliterates Devanagari script to Latin/Hinglish representation for robust name comparison.
+    """
+    if not text:
+        return ""
+    
+    mapping = {
+        'अ': 'a', 'आ': 'a', 'इ': 'i', 'ई': 'i', 'उ': 'u', 'ऊ': 'u', 'ऋ': 'ri',
+        'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'अं': 'n', 'अः': 'h',
+        'ा': 'a', 'ि': 'i', 'ी': 'i', 'ु': 'u', 'ू': 'u', 'ृ': 'ri',
+        'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ं': 'n', 'ः': 'h',
+        'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'n',
+        'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'n',
+        'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
+        'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
+        'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm',
+        'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h',
+        'क्ष': 'ksh', 'त्र': 'tr', 'ज्ञ': 'gy', 'श्र': 'shr',
+        'क़': 'q', 'ख़': 'kh', 'ग़': 'g', 'ज़': 'z', 'ड़': 'd', 'ढ़': 'dh', 'फ़': 'f',
+        '़': '', '्': ''
+    }
+    
+    consonants = set("कखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसहक्षत्रज्ञश्रक़ख़ग़ज़ड़ढ़फ़")
+    vowels_signs = set("ािीुूृेैोौूंः")
+    
+    result = []
+    chars = list(text)
+    i = 0
+    while i < len(chars):
+        char = chars[i]
+        if i + 1 < len(chars) and (char + chars[i+1]) in mapping:
+            result.append(mapping[char + chars[i+1]])
+            i += 2
+            continue
+            
+        if char in mapping:
+            result.append(mapping[char])
+            if char in consonants:
+                next_is_vowel = False
+                if i + 1 < len(chars):
+                    next_char = chars[i+1]
+                    if next_char in vowels_signs or next_char == '्' or next_char == ' ':
+                        next_is_vowel = True
+                if not next_is_vowel and i + 1 < len(chars) and chars[i+1].strip():
+                    result.append('a')
+        else:
+            result.append(char)
+        i += 1
+        
+    return "".join(result)
+
 def check_fuzzy_match(word1: str, word2: str) -> bool:
     """
     Fuzzy string matching helper using bigram overlap.
@@ -1078,35 +1130,53 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
             r"bol\s*raha\s*ho"
         ])
 
+    # Convert text to latin for robust name extraction and matching
+    latin_text = devanagari_to_latin(text)
+
     # Name mismatch check
     if customer_name:
         expected_parts = [p.lower() for p in customer_name.split()]
         name_match_patterns = [
-            r"(?:main|मैं)\s+([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:bol|hoon|hu|बोल|हूं|हूँ|bolta|bolti|raha|rahi)(?:\s|$|[.,!?])",
-            r"(?:mera\s+naam|मेरा\s+नाम)\s+([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:hai|है|he)(?:\s|$|[.,!?])",
-            r"([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:bol\s+raha|bol\s+rahi|बोल\s+रहा|बोल\s+रही)(?:\s|$|[.,!?])",
+            r"(?:main|मैं|mai)\s+([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:bol|hoon|hu|बोल|हूं|हूँ|bolta|bolti|raha|rahi)(?:\s|$|[.,!?])",
+            r"(?:mera\s+naam|मेरा\s+नाम|mera\s+nam)\s+([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:hai|है|he)(?:\s|$|[.,!?])",
+            r"([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:bol\s+raha|bol\s+rahi|बोल\s+रहा|बोल\s+रही|bol\s+rahe)(?:\s|$|[.,!?])",
             r"this\s+is\s+([a-zA-Z]+|[\u0900-\u097F]+)(?:\s|$|[.,!?])",
             r"([a-zA-Z]+|[\u0900-\u097F]+)\s+speaking(?:\s|$|[.,!?])"
         ]
+        
+        # Build comprehensive ignore list (Hinglish + Devanagari equivalents)
+        ignore_list = {
+            "unka", "uska", "apka", "aapka", "kya", "mera", "mai", "main", "bol", "hi", "he", "hee", "h", "ji", "ko",
+            "ka", "ki", "ke", "se", "par", "bhi", "toh", "to", "hoon", "hu", "ha", "haan",
+            "उनका", "उसका", "आपका", "क्या", "मेरा", "मेरी", "मेरे", "मै", "मैं", "बोल", "ही", "है", "ह", "जी", "को",
+            "का", "की", "के", "से", "पर", "भी", "तो", "हूं", "हूँ", "हाँ", "हां"
+        }
+        
         for pat in name_match_patterns:
             m = re.search(pat, text)
             if m:
                 extracted = m.group(1).lower().strip()
-                if extracted and extracted not in expected_parts and extracted not in ["unka", "uska", "apka", "aapka", "kya", "mera", "mai", "main", "bol", "hi", "he", "hee", "h", "ji", "ko"]:
+                # Transliterate extracted to compare against expected parts and ignore list in Latin
+                extracted_latin = devanagari_to_latin(extracted)
+                if extracted_latin and extracted_latin not in expected_parts and extracted_latin not in ignore_list and extracted not in ignore_list:
                     return Intent.WRONG_PERSON
 
-        # Standalone different name check (if only one word is said and it is a name not matching the customer)
+        # Standalone different name check
         words = re.findall(r"\b[a-zA-Z\u0900-\u097F]+\b", text)
         if len(words) == 1:
             w = words[0]
+            w_latin = devanagari_to_latin(w)
             is_expected = False
             for part in expected_parts:
-                if len(part) >= 3 and check_fuzzy_match(w, part):
+                if len(part) >= 3 and (check_fuzzy_match(w, part) or check_fuzzy_match(w_latin, part)):
                     is_expected = True
                     break
             if not is_expected:
-                ignore_words = {"haan", "ha", "han", "haa", "ji", "yes", "y", "ok", "okay", "no", "nah", "nahi", "nahin", "naa", "correct", "wrong", "galat", "hello", "hi", "speaking", "हाँ", "जी", "ठीक", "हां", "नहीं", "नही"}
-                if w not in ignore_words:
+                ignore_words = {
+                    "haan", "ha", "han", "haa", "ji", "yes", "y", "ok", "okay", "no", "nah", "nahi", "nahin", "naa", "correct", "wrong", "galat", "hello", "hi", "speaking",
+                    "हाँ", "जी", "ठीक", "हां", "नहीं", "नही", "ही", "भी", "तो"
+                }
+                if w not in ignore_words and w_latin not in ignore_words:
                     return Intent.WRONG_PERSON
 
     for pattern in wrong_person_patterns:
@@ -1116,13 +1186,16 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
     # 4b. Fuzzy identity name confirmation check
     if customer_name:
         expected_parts = [p.lower() for p in customer_name.split() if len(p) >= 3]
-        words = re.findall(r"\b\w+\b", text)
+        words_raw = re.findall(r"\b[a-zA-Z\u0900-\u097F]+\b", text)
+        words_latin = re.findall(r"\b\w+\b", latin_text)
+        all_words = set(words_raw + words_latin)
+        
         has_name_match = False
         for part in expected_parts:
-            if text == part or check_fuzzy_match(text, part):
+            if text == part or latin_text == part or check_fuzzy_match(text, part) or check_fuzzy_match(latin_text, part):
                 has_name_match = True
                 break
-            for w in words:
+            for w in all_words:
                 if check_fuzzy_match(w, part):
                     has_name_match = True
                     break
