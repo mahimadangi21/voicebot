@@ -71,6 +71,8 @@ AFFIRM_WORDS = {
     "ok", "okay", "bilkul", "sahi", "haanji", "haan ji", "kardo",
     "bhejdo", "bhej do", "kar do", "bhej de", "bhej dena", "bhejye",
     "sure", "confirm", "speaking", "yep", "correct", "main hi", "bol raha",
+    "bol rahi", "bol rahi hoon", "bol rahi hu", "bol raha hoon", "bol raha hu",
+    "main hoon", "mai hoon", "hoon", "hu",
     "pay", "dunga", "karunga", "pay kar",
     "theek hai", "thik hai", "ok kar do", "ok kardo", "okay kar do", "okay kardo",
     # Devanagari Hindi matches
@@ -885,7 +887,26 @@ def extract_callback_time(text: str) -> str | None:
     if any(re.search(pat, cleaned) for pat in time_patterns):
         return clean_callback_time(text)
         
-    return None
+def check_fuzzy_match(word1: str, word2: str) -> bool:
+    """
+    Fuzzy string matching helper using bigram overlap.
+    """
+    w1, w2 = word1.lower().strip(), word2.lower().strip()
+    if not w1 or not w2:
+        return False
+    if w1 == w2:
+        return True
+    
+    def get_bigrams(s):
+        return {s[i:i+2] for i in range(len(s)-1)}
+        
+    b1, b2 = get_bigrams(w1), get_bigrams(w2)
+    if not b1 or not b2:
+        return False
+        
+    overlap = len(b1 & b2)
+    similarity = overlap / max(len(b1), len(b2))
+    return similarity >= 0.7
 
 
 def detect_intent_with_confidence(user_text: str, customer_name: str = None) -> tuple[Intent, float]:
@@ -1036,7 +1057,8 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
         r"भाई\s*बोल",
         r"पापा\s*बोल",
         r"पत्नी\s*बोल",
-        r"दोस्त\s*बोल"
+        r"दोस्त\s*बोल",
+        rf"\b(?:main|mai|मैं)\s+{re.escape(first_name)}\s+(?:nah?i|नहीं|नही)\s+(?:hoon|hu|हूं|हूँ)\b"
     ]
 
     if not has_mahima:
@@ -1073,9 +1095,43 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
                 if extracted and extracted not in expected_parts and extracted not in ["unka", "uska", "apka", "aapka", "kya", "mera", "mai", "main", "bol", "hi", "he", "hee", "h", "ji", "ko"]:
                     return Intent.WRONG_PERSON
 
+        # Standalone different name check (if only one word is said and it is a name not matching the customer)
+        words = re.findall(r"\b[a-zA-Z\u0900-\u097F]+\b", text)
+        if len(words) == 1:
+            w = words[0]
+            is_expected = False
+            for part in expected_parts:
+                if len(part) >= 3 and check_fuzzy_match(w, part):
+                    is_expected = True
+                    break
+            if not is_expected:
+                ignore_words = {"haan", "ha", "han", "haa", "ji", "yes", "y", "ok", "okay", "no", "nah", "nahi", "nahin", "naa", "correct", "wrong", "galat", "hello", "hi", "speaking", "हाँ", "जी", "ठीक", "हां", "नहीं", "नही"}
+                if w not in ignore_words:
+                    return Intent.WRONG_PERSON
+
     for pattern in wrong_person_patterns:
         if re.search(pattern, text):
             return Intent.WRONG_PERSON
+
+    # 4b. Fuzzy identity name confirmation check
+    if customer_name:
+        expected_parts = [p.lower() for p in customer_name.split() if len(p) >= 3]
+        words = re.findall(r"\b\w+\b", text)
+        has_name_match = False
+        for part in expected_parts:
+            if text == part or check_fuzzy_match(text, part):
+                has_name_match = True
+                break
+            for w in words:
+                if check_fuzzy_match(w, part):
+                    has_name_match = True
+                    break
+            if has_name_match:
+                break
+        if has_name_match:
+            has_negation = any(word in text for word in ["nahi", "nahin", "naa", "no", "galat", "wrong", "नहीं", "नही", "ना"])
+            if not has_negation:
+                return Intent.AFFIRM
 
     # 5. Check payment link request
     for pattern in ASK_LINK_PATTERNS:

@@ -71,6 +71,8 @@ const AFFIRM_WORDS = [
   "ok", "okay", "bilkul", "sahi", "haanji", "haan ji", "kardo",
   "bhejdo", "bhej do", "kar do", "bhej de", "bhej dena", "bhejye",
   "sure", "confirm", "speaking", "yep", "correct", "main hi", "bol raha",
+  "bol rahi", "bol rahi hoon", "bol rahi hu", "bol raha hoon", "bol raha hu",
+  "main hoon", "mai hoon", "hoon", "hu",
   "pay", "dunga", "karunga", "pay kar",
   "theek hai", "thik hai", "ok kar do", "ok kardo", "okay kar do", "okay kardo",
   "हाँ", "जी", "ठीक", "हां", "हाँजी", "हाँ जी", "भेज दो", "कर दो", "सही",
@@ -821,6 +823,33 @@ const getPaymentConfirmText = (userText) => {
   }
 };
 
+const checkFuzzyMatch = (word1, word2) => {
+  const w1 = (word1 || "").toLowerCase().trim();
+  const w2 = (word2 || "").toLowerCase().trim();
+  if (!w1 || !w2) return false;
+  if (w1 === w2) return true;
+  
+  const getBigrams = (s) => {
+    const b = new Set();
+    for (let i = 0; i < s.length - 1; i++) {
+      b.add(s.slice(i, i + 2));
+    }
+    return b;
+  };
+  
+  const b1 = getBigrams(w1);
+  const b2 = getBigrams(w2);
+  if (!b1.size || !b2.size) return false;
+  
+  let shared = 0;
+  b1.forEach(bg => {
+    if (b2.has(bg)) shared++;
+  });
+  
+  const similarity = shared / Math.max(b1.size, b2.size);
+  return similarity >= 0.7;
+};
+
 const detectIntent = (text, customerName = null) => {
   const clean = text.toLowerCase().trim();
 
@@ -974,7 +1003,8 @@ const detectIntent = (text, customerName = null) => {
     /पाषा\s*बोल/i,
     /पापा\s*बोल/i,
     /पत्नी\s*बोल/i,
-    /दोस्त\s*बोल/i
+    /दोस्त\s*बोल/i,
+    new RegExp(`\\b(?:main|mai|मैं)\\s+${firstName}\\s+(?:nah?i|नहीं|नही)\\s+(?:hoon|hu|हूं|हूँ)\\b`, 'i')
   ];
 
   if (!hasMahima) {
@@ -987,8 +1017,56 @@ const detectIntent = (text, customerName = null) => {
     wrongPersonPatterns.push(/bol\s*rahi\s*ho/i);
   }
 
+  // Standalone different name check (if only one word is said and it is a name not matching the customer)
+  if (customerName) {
+    const expectedParts = customerName.toLowerCase().split(/\s+/).map(p => p.trim()).filter(Boolean);
+    const words = clean.match(/[a-zA-Z\u0900-\u097F]+/g) || [];
+    if (words.length === 1) {
+      const w = words[0];
+      let isExpected = false;
+      for (const part of expectedParts) {
+        if (part.length >= 3 && checkFuzzyMatch(w, part)) {
+          isExpected = true;
+          break;
+        }
+      }
+      if (!isExpected) {
+        const ignoreWords = ["haan", "ha", "han", "haa", "ji", "yes", "y", "ok", "okay", "no", "nah", "nahi", "nahin", "naa", "correct", "wrong", "galat", "hello", "hi", "speaking", "हाँ", "जी", "ठीक", "हां", "नहीं", "नही"];
+        if (!ignoreWords.includes(w)) {
+          return 'WRONG_PERSON';
+        }
+      }
+    }
+  }
+
   for (const pat of wrongPersonPatterns) {
     if (pat.test(clean)) return 'WRONG_PERSON';
+  }
+
+  // 4b. Fuzzy identity name confirmation check
+  if (customerName) {
+    const expectedParts = customerName.toLowerCase().split(/\s+/).map(p => p.trim()).filter(p => p.length >= 3);
+    const words = clean.split(/\s+/).map(p => p.trim()).filter(Boolean);
+    let hasNameMatch = false;
+    for (const part of expectedParts) {
+      if (clean === part || checkFuzzyMatch(clean, part)) {
+        hasNameMatch = true;
+        break;
+      }
+      for (const w of words) {
+        if (checkFuzzyMatch(w, part)) {
+          hasNameMatch = true;
+          break;
+        }
+      }
+      if (hasNameMatch) break;
+    }
+    if (hasNameMatch) {
+      const hasNegation = ["nahi", "nahin", "naa", "no", "galat", "wrong", "नहीं", "नही", "ना"].some(word => clean.includes(word));
+      if (!hasNegation) {
+        return 'AFFIRM';
+      }
+    }
   }
   
   // 5. Check payment link request
@@ -1142,6 +1220,10 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   }
 
   let intent = detectIntent(userText, customerName);
+
+  if (intent !== 'UNCLEAR' && intent !== 'SILENCE' && intent !== 'NOISE') {
+    if (unclearRetriesRef) unclearRetriesRef.current = 0;
+  }
 
   const idx = getDeterministicIndex(customerName, 3);
 

@@ -61,7 +61,9 @@ def load_sessions():
                     promise_date=sdata.get("promise_date", ""),
                     callback_time=sdata.get("callback_time", ""),
                     engine=sdata.get("engine", "sarvam"),
-                    voice=sdata.get("voice", "male")
+                    voice=sdata.get("voice", "male"),
+                    already_paid=sdata.get("already_paid", False),
+                    amount_disclosed=sdata.get("amount_disclosed", False)
                 )
                 sessions[sid] = ctx
         print(f"[SESSION PERSIST] Loaded {len(sessions)} sessions from {SESSIONS_FILE}")
@@ -84,7 +86,9 @@ def save_sessions():
                 "promise_date": ctx.promise_date,
                 "callback_time": ctx.callback_time,
                 "engine": getattr(ctx, "engine", "sarvam"),
-                "voice": getattr(ctx, "voice", "male")
+                "voice": getattr(ctx, "voice", "male"),
+                "already_paid": getattr(ctx, "already_paid", False),
+                "amount_disclosed": getattr(ctx, "amount_disclosed", False)
             }
         with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
