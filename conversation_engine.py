@@ -916,6 +916,8 @@ class CallContext:
     transcript: list = field(default_factory=list)  # for logs / QA
     promise_date: str = ""  # For saving Category 7 payment promise details
     callback_time: str = ""  # For saving Category 12 callback details
+    engine: str = "sarvam"
+    voice: str = "male"
 
     def log(self, speaker: str, text: str):
         self.transcript.append((speaker, text))

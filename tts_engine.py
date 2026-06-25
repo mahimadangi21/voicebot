@@ -717,11 +717,11 @@ def speak_with_sarvam(text: str, filename: str, voice: str = None) -> str:
         "Content-Type": "application/json"
     }
 
-    # Always use the locked constants — the `voice` parameter is deliberately ignored.
-    # See DEFAULT_SPEAKER / DEFAULT_MODEL at the top of this file.
+    # Use the voice parameter if specified, otherwise default speaker
+    actual_speaker = voice if voice else DEFAULT_SPEAKER
     payload = {
         "text": text,
-        "speaker": DEFAULT_SPEAKER,
+        "speaker": actual_speaker,
         "target_language_code": DEFAULT_LANG,
         "model": DEFAULT_MODEL,
         "pace": DEFAULT_PACE,
@@ -732,7 +732,7 @@ def speak_with_sarvam(text: str, filename: str, voice: str = None) -> str:
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
-    print(f"[TTS Attempt] Attempting Sarvam AI with speaker '{DEFAULT_SPEAKER}' (locked)...")
+    print(f"[TTS Attempt] Attempting Sarvam AI with speaker '{actual_speaker}'...")
     print(f"[TTS Request Payload] Text: '{text}' | Payload: {payload}")
     
     try:
@@ -814,7 +814,7 @@ def speak_with_edge_tts(text: str, filename: str, voice: str = DEFAULT_EDGE_VOIC
 
     return filename
 
-def speak(text: str, filename: str, engine: str = "sarvam") -> str:
+def speak(text: str, filename: str, engine: str = "sarvam", voice: str = "male") -> str:
     """
     General wrapper method that selects the engine and handles fallback dynamically.
     Normalizes the text before calling Sarvam.
@@ -822,19 +822,22 @@ def speak(text: str, filename: str, engine: str = "sarvam") -> str:
     selected_engine = None
     spoken_text = text  # Track the actual text sent to the TTS engine for accurate safeguard checks
     
-    print(f"[TTS Call] Input Text: '{text}'")
+    print(f"[TTS Call] Input Text: '{text}' | Engine: {engine} | Voice: {voice}")
     
     # Pre-transliterate Devanagari text for fallbacks (edge-tts and gTTS)
     devanagari_text = hinglish_to_devanagari(text)
     
     if engine.lower() == "sarvam":
         api_key = os.environ.get("SARVAM_API_KEY")
+        sarvam_voice = "rohan" if voice.lower() == "male" else "divya"
+        fallback_edge_voice = "hi-IN-MadhurNeural" if voice.lower() == "male" else "hi-IN-SwaraNeural"
+        
         if not api_key or api_key == "":
             reason = "SARVAM_API_KEY environment variable is empty or missing"
             print(f"[TTS Fallback Triggered] Engine: Edge-TTS (Reason: {reason})")
             try:
                 spoken_text = devanagari_text
-                speak_with_edge_tts(devanagari_text, filename)
+                speak_with_edge_tts(devanagari_text, filename, voice=fallback_edge_voice)
                 selected_engine = "Edge-TTS"
                 print(f"[TTS Engine Success] Synthesized successfully with Edge-TTS fallback: '{filename}'")
             except Exception as edge_err:
@@ -847,7 +850,7 @@ def speak(text: str, filename: str, engine: str = "sarvam") -> str:
             print(f"[TTS Fallback Triggered] Engine: Edge-TTS (Reason: {reason})")
             try:
                 spoken_text = devanagari_text
-                speak_with_edge_tts(devanagari_text, filename)
+                speak_with_edge_tts(devanagari_text, filename, voice=fallback_edge_voice)
                 selected_engine = "Edge-TTS"
                 print(f"[TTS Engine Success] Synthesized successfully with Edge-TTS fallback: '{filename}'")
             except Exception as edge_err:
@@ -860,8 +863,8 @@ def speak(text: str, filename: str, engine: str = "sarvam") -> str:
                 # Apply pronunciation fix layer to Sarvam input
                 normalized_text = normalize_for_tts(text)
                 spoken_text = normalized_text
-                print(f"[TTS Engine Chosen] Engine: Sarvam AI (Text: '{normalized_text}')")
-                speak_with_sarvam(normalized_text, filename)
+                print(f"[TTS Engine Chosen] Engine: Sarvam AI (Text: '{normalized_text}', Speaker: '{sarvam_voice}')")
+                speak_with_sarvam(normalized_text, filename, voice=sarvam_voice)
                 selected_engine = "Sarvam AI"
                 print(f"[TTS Engine Success] Synthesized successfully with Sarvam AI: '{filename}'")
             except Exception as e:
@@ -869,7 +872,7 @@ def speak(text: str, filename: str, engine: str = "sarvam") -> str:
                 print(f"[TTS Fallback Triggered] Engine: Edge-TTS (Reason: Sarvam AI failed: {e})")
                 try:
                     spoken_text = devanagari_text
-                    speak_with_edge_tts(devanagari_text, filename)
+                    speak_with_edge_tts(devanagari_text, filename, voice=fallback_edge_voice)
                     selected_engine = "Edge-TTS"
                     print(f"[TTS Engine Success] Synthesized successfully with Edge-TTS fallback: '{filename}'")
                 except Exception as edge_err:
@@ -878,10 +881,11 @@ def speak(text: str, filename: str, engine: str = "sarvam") -> str:
                     selected_engine = "gTTS"
                     print(f"[TTS Engine Success] Synthesized successfully with gTTS fallback: '{filename}'")
     elif engine.lower() == "edge":
+        fallback_edge_voice = "hi-IN-MadhurNeural" if voice.lower() == "male" else "hi-IN-SwaraNeural"
         print(f"[TTS Engine Chosen] Engine: Edge-TTS (Reason: Direct request)")
         try:
             spoken_text = devanagari_text
-            speak_with_edge_tts(devanagari_text, filename)
+            speak_with_edge_tts(devanagari_text, filename, voice=fallback_edge_voice)
             selected_engine = "Edge-TTS"
             print(f"[TTS Engine Success] Synthesized successfully with Edge-TTS: '{filename}'")
         except Exception as edge_err:
@@ -889,12 +893,25 @@ def speak(text: str, filename: str, engine: str = "sarvam") -> str:
             speak_with_gtts(devanagari_text, filename)
             selected_engine = "gTTS"
             print(f"[TTS Engine Success] Synthesized successfully with gTTS fallback: '{filename}'")
-    else:
-        print(f"[TTS Engine Chosen] Engine: gTTS (Reason: Direct request)")
-        spoken_text = devanagari_text
-        speak_with_gtts(devanagari_text, filename)
-        selected_engine = "gTTS"
-        print(f"[TTS Engine Success] Synthesized successfully with gTTS: '{filename}'")
+    else: # gtts
+        if voice.lower() == "male":
+            print(f"[TTS Engine Chosen] Engine: gTTS-Male (Using Edge-TTS hi-IN-MadhurNeural fallback)")
+            try:
+                spoken_text = devanagari_text
+                speak_with_edge_tts(devanagari_text, filename, voice="hi-IN-MadhurNeural")
+                selected_engine = "Edge-TTS"
+                print(f"[TTS Engine Success] Synthesized successfully with Edge-TTS: '{filename}'")
+            except Exception as edge_err:
+                print(f"[TTS Fallback Triggered] Engine: gTTS (Reason: Edge-TTS failed: {edge_err})")
+                speak_with_gtts(devanagari_text, filename)
+                selected_engine = "gTTS"
+                print(f"[TTS Engine Success] Synthesized successfully with gTTS: '{filename}'")
+        else:
+            print(f"[TTS Engine Chosen] Engine: gTTS (Reason: Direct request)")
+            spoken_text = devanagari_text
+            speak_with_gtts(devanagari_text, filename)
+            selected_engine = "gTTS"
+            print(f"[TTS Engine Success] Synthesized successfully with gTTS: '{filename}'")
         
     # Safeguard check: verify audio file exists and has sensible duration.
     # IMPORTANT: use `spoken_text` (the actual text sent to the engine), NOT the original `text`.
@@ -912,11 +929,11 @@ def speak(text: str, filename: str, engine: str = "sarvam") -> str:
             
     return filename
 
-def speak_to_file(text: str, filename: str = "bot_reply.mp3", lang: str = "hi") -> str:
+def speak_to_file(text: str, filename: str = "bot_reply.mp3", lang: str = "hi", engine: str = "sarvam", voice: str = "male") -> str:
     """
     Backward compatibility wrapper matching the original function signature in server.py.
     """
-    return speak(text, filename, engine="sarvam")
+    return speak(text, filename, engine=engine, voice=voice)
 
 
 # ---------------------------------------------------------------------------

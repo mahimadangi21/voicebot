@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Phone,
   PhoneOff,
-  Settings,
+
   Volume2,
   VolumeX,
   ShieldAlert,
@@ -20,7 +20,7 @@ import {
   Grid,
   HelpCircle,
   Users,
-  Activity,
+
   Landmark,
   User,
   Calendar,
@@ -1633,6 +1633,10 @@ export default function VoiceBot() {
   const [dateWarning, setDateWarning] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Voice engine and voice settings
+  const [voiceEngine, setVoiceEngine] = useState('sarvam'); // 'sarvam' | 'gtts'
+  const [voiceGender, setVoiceGender] = useState('male'); // 'male' | 'female'
+
   // Call status
   const [sessionId, setSessionId] = useState(null);
   const [isCallActive, _setIsCallActive] = useState(false);
@@ -1653,7 +1657,6 @@ export default function VoiceBot() {
 
   // Call summary states
   const [callSummary, setCallSummary] = useState(null);
-  const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
 
   // Refs
@@ -2392,7 +2395,9 @@ export default function VoiceBot() {
           body: JSON.stringify({
             name: trimmedName,
             amount: parseInt(amount),
-            bank_name: trimmedBank
+            bank_name: trimmedBank,
+            engine: voiceEngine,
+            voice: voiceGender
           }),
           signal: controller.signal
         });
@@ -2488,7 +2493,12 @@ export default function VoiceBot() {
         const res = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: closingText }),
+          body: JSON.stringify({
+            text: closingText,
+            session_id: sessionIdRef.current,
+            engine: voiceEngine,
+            voice: voiceGender
+          }),
           signal: controller.signal
         });
         clearTimeout(tid);
@@ -3218,12 +3228,12 @@ export default function VoiceBot() {
             }`}>
               BankConnect Assistant
             </h1>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className={`text-[10px] font-semibold tracking-wider uppercase transition-colors ${
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className={`text-[9px] font-semibold tracking-wider uppercase transition-colors ${
                 isDarkMode ? 'text-slate-400' : 'text-slate-500'
               }`}>
-                {isMockMode ? 'Simulator Active (Offline)' : 'Production Server Connected'}
+                {isCallActive ? 'Call in Progress' : 'System Ready'}
               </span>
             </div>
           </div>
@@ -3231,43 +3241,14 @@ export default function VoiceBot() {
 
         {/* Global Controls */}
         <div className="flex items-center gap-4">
-          {/* Mock Mode Switcher */}
-          <div className={`flex items-center rounded-full px-3 py-1 text-xs border transition-colors duration-300 ${
-            isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-100 border-slate-205'
-          }`}>
-            <span className={`font-medium mr-2 tracking-wide uppercase text-[9px] transition-colors ${
-              isDarkMode ? 'text-slate-400' : 'text-slate-600'
-            }`}>Mock Mode</span>
-            <button
-              onClick={() => {
-                if (window.speechSynthesis) window.speechSynthesis.cancel();
-                setIsMockMode(!isMockMode);
-              }}
-              className={`relative inline-flex h-4.5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                isMockMode ? 'bg-[#7C3AED]' : (isDarkMode ? 'bg-slate-700' : 'bg-slate-300')
-              }`}
-            >
-              <span className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                isMockMode ? 'translate-x-4.5' : 'translate-x-0'
-              }`} />
-            </button>
-          </div>
-
-          {/* Debug Details Toggle */}
+          {/* Active Call Badge / Timer */}
           {isCallActive && (
-            <button
-              onClick={() => setShowDebugInfo(!showDebugInfo)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all duration-150 active:scale-95 cursor-pointer ${
-                showDebugInfo
-                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/15'
-                  : isDarkMode
-                  ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                  : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-[#0F172A] hover:bg-slate-200/50'
-              }`}
-            >
-              <Activity className="w-4.5 h-4.5 text-indigo-400" />
-              <span>{showDebugInfo ? 'Hide Debug Details' : 'Show Debug Details'}</span>
-            </button>
+            <div className="flex items-center gap-2.5 bg-red-500/10 border border-red-500/20 px-3.5 py-1.5 rounded-xl">
+              <span className="h-2 w-2 rounded-full bg-red-500 animate-ping"></span>
+              <span className="text-xs font-mono font-bold text-red-400 tracking-wider">
+                {formatTimer(callDuration)}
+              </span>
+            </div>
           )}
 
           {/* Theme Toggle Button */}
@@ -3280,33 +3261,6 @@ export default function VoiceBot() {
           >
             {isDarkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-indigo-600" />}
           </button>
-
-          {/* Settings Indicator */}
-          <button className={`p-2 rounded-xl transition duration-150 cursor-pointer ${
-            isDarkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800/50' : 'text-slate-600 hover:text-[#0F172A] hover:bg-slate-100'
-          }`}>
-            <Settings className="w-5 h-5" />
-          </button>
-
-          {/* Active Call Badge / Timer */}
-          {isCallActive && (
-            <div className="flex items-center gap-3 bg-red-600/15 border border-red-500/20 px-4 py-1.5 rounded-xl">
-              <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-ping"></span>
-              <span className="text-xs font-mono font-bold text-red-400 tracking-wider">
-                {formatTimer(callDuration)}
-              </span>
-            </div>
-          )}
-
-          {/* End Call Button */}
-          {isCallActive && !isTerminal && (
-            <button
-              onClick={handleEndCall}
-              className="bg-[#EF4444] hover:bg-red-600 text-white px-4 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 shadow-lg shadow-red-600/20 active:scale-95 transition-all duration-150 cursor-pointer"
-            >
-              <PhoneOff className="w-4 h-4" /> End Call
-            </button>
-          )}
         </div>
       </header>
 
@@ -3494,6 +3448,66 @@ export default function VoiceBot() {
                     </div>
                   </div>
 
+                  {/* Voice Configuration */}
+                  <div className="mt-6 border-t border-slate-800/40 pt-5">
+                    <h4 className={`text-xs font-bold uppercase tracking-widest mb-3 ml-1 ${
+                      isDarkMode ? 'text-indigo-400' : 'text-indigo-600'
+                    }`}>
+                      Voice Configuration
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                          isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                        }`}>
+                          Voice Engine
+                        </label>
+                        <select
+                          value={voiceEngine}
+                          onChange={(e) => setVoiceEngine(e.target.value)}
+                          disabled={isProcessing || isCallActive}
+                          className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold cursor-pointer ${
+                            isDarkMode 
+                              ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
+                              : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                          <option value="sarvam">Sarvam AI</option>
+                          <option value="gtts">gTTS</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1 transition-colors ${
+                          isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                        }`}>
+                          Voice
+                        </label>
+                        <select
+                          value={voiceGender}
+                          onChange={(e) => setVoiceGender(e.target.value)}
+                          disabled={isProcessing || isCallActive}
+                          className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-semibold cursor-pointer ${
+                            isDarkMode 
+                              ? 'bg-[#070B1A] text-slate-200 border-slate-800 focus:border-indigo-500' 
+                              : 'bg-slate-50 text-slate-800 border-slate-250 focus:border-indigo-500'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                          {voiceEngine === 'sarvam' ? (
+                            <>
+                              <option value="male">Sarvam Male</option>
+                              <option value="female">Sarvam Female</option>
+                            </>
+                          ) : (
+                            <>
+                              <option value="male">gTTS Male</option>
+                              <option value="female">gTTS Female</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
                   <button
                     type="submit"
                     disabled={isProcessing}
@@ -3667,21 +3681,9 @@ export default function VoiceBot() {
                 </div>
 
                 {/* Bottom Control Bar Area */}
-                <div className={`p-6 border-t flex flex-col items-center gap-5 z-20 transition-colors duration-300 ${
+                <div className={`p-6 border-t flex flex-col items-center justify-center z-20 transition-colors duration-300 ${
                   isDarkMode ? 'bg-[#0E1326]/80 border-t-slate-800/80' : 'bg-white border-t-slate-200 shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.05)]'
                 }`}>
-                  {/* State description status bar */}
-                  {showDebugInfo && (
-                    <div className="flex items-center gap-3">
-                      <span className={`text-[10px] font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Bot Collection Stage:</span>
-                      <span className={`text-[9px] uppercase font-bold tracking-wider px-3 py-1 rounded-full bg-gradient-to-r ${
-                        STATE_COLORS[currentState] || 'from-slate-500/10 to-zinc-500/10 text-slate-400 border border-slate-500/30'
-                      }`}>
-                        {currentState.replace(/_/g, ' ')}
-                      </span>
-                    </div>
-                  )}
-
                   <div className="flex items-center gap-6">
                     {/* Mute Button */}
                     <button
@@ -3698,24 +3700,24 @@ export default function VoiceBot() {
                       {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                     </button>
 
-                    {/* Micro button trigger */}
+                    {/* Voice Trigger button */}
                     {!isTerminal && (
                       <button
                         onClick={toggleListening}
                         disabled={isSpeaking || isThinking || isOnHold}
-                        className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed shadow-xl cursor-pointer ${
+                        className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed shadow-xl cursor-pointer ${
                           isListening
-                            ? 'bg-red-600 text-white shadow-red-600/25 ring-4 ring-red-500/20 animate-pulse'
+                            ? 'bg-red-600 text-white shadow-red-650/25 ring-4 ring-red-500/20 animate-pulse'
                             : 'bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] text-white shadow-indigo-500/20'
                         }`}
                       >
                         {isListening ? (
                           <div className="relative flex items-center justify-center">
-                            <span className="animate-ping absolute inline-flex h-12 w-12 rounded-full bg-red-400 opacity-30"></span>
-                            <Phone className="w-7 h-7 relative z-10" />
+                            <span className="animate-ping absolute inline-flex h-10 w-10 rounded-full bg-red-400 opacity-30"></span>
+                            <Phone className="w-6 h-6 relative z-10" />
                           </div>
                         ) : (
-                          <Mic className="w-8 h-8" />
+                          <Mic className="w-6 h-6" />
                         )}
                       </button>
                     )}
@@ -3734,8 +3736,18 @@ export default function VoiceBot() {
                     >
                       <Pause className="w-5 h-5" />
                     </button>
-                  </div>
 
+                    {/* Prominent Red End Call Button */}
+                    {!isTerminal && (
+                      <button
+                        onClick={handleEndCall}
+                        title="End Call"
+                        className="w-12 h-12 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-lg shadow-red-600/25"
+                      >
+                        <PhoneOff className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </section>
 
@@ -3800,45 +3812,6 @@ export default function VoiceBot() {
                         {msg.text}
                       </p>
 
-                      {/* Transcript card metadata */}
-                      {showDebugInfo && (
-                        <div className={`flex flex-wrap gap-1.5 mt-1 border-t pt-2 text-[9px] font-semibold uppercase tracking-wide transition-colors ${
-                          isDarkMode ? 'border-slate-800/40 text-slate-400' : 'border-slate-100 text-slate-500'
-                        }`}>
-                          {msg.sender === 'user' ? (
-                            <>
-                              <span className={`px-2 py-0.5 rounded border ${
-                                isDarkMode ? 'bg-indigo-950/40 border-indigo-900/30 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-600'
-                              }`}>
-                                Intent: {msg.intent || 'NONE'}
-                              </span>
-                              <span className={`px-2 py-0.5 rounded border ${
-                                isDarkMode ? 'bg-purple-950/40 border-purple-900/30 text-purple-400' : 'bg-purple-50 border-purple-100 text-purple-600'
-                              }`}>
-                                Emotion: {msg.emotion || 'Neutral'}
-                              </span>
-                              <span className={`px-2 py-0.5 rounded border ${
-                                isDarkMode ? 'bg-slate-950/40 border-slate-900/30' : 'bg-slate-100 border-slate-200'
-                              }`}>
-                                Conf: {msg.confidence}%
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <span className={`px-2 py-0.5 rounded border ${
-                                isDarkMode ? 'bg-[#7C3AED]/10 border-[#7C3AED]/20 text-purple-400' : 'bg-purple-50 border-purple-100 text-purple-600'
-                              }`}>
-                                Stage: {msg.intent ? msg.intent.replace(/_/g, ' ') : 'Greeting'}
-                              </span>
-                              <span className={`px-2 py-0.5 rounded border ${
-                                isDarkMode ? 'bg-[#F5A623]/10 border-[#F5A623]/20 text-[#F5A623]' : 'bg-amber-50 border-amber-200 text-amber-700'
-                              }`}>
-                                Emotion: {msg.emotion || 'Empathetic'}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      )}
                     </motion.div>
                   ))}
 
@@ -3860,39 +3833,7 @@ export default function VoiceBot() {
 
                   <div ref={chatBottomRef} />
                 </div>
-                
-                {/* Debug Text Input for QA Testing */}
-                <div className={`mt-4 p-2 border rounded-xl flex items-center gap-2 shrink-0 transition-colors duration-300 ${
-                  isDarkMode ? 'bg-[#070B1A]/80 border-slate-800' : 'bg-white border-slate-250 shadow-sm'
-                }`}>
-                  <input
-                    type="text"
-                    id="debug-chat-input"
-                    placeholder="Type client reply..."
-                    className={`flex-1 bg-transparent text-xs focus:outline-none px-2 font-medium transition-colors ${
-                      isDarkMode ? 'text-slate-200 placeholder-slate-500' : 'text-slate-800 placeholder-slate-400'
-                    }`}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && e.target.value.trim() && !isThinkingRef.current && !isSpeakingRef.current) {
-                        handleUserMessage(e.target.value);
-                        e.target.value = '';
-                      }
-                    }}
-                  />
-                  <button
-                    id="debug-chat-send"
-                    onClick={(e) => {
-                      const inp = document.getElementById('debug-chat-input');
-                      if (inp && inp.value.trim() && !isThinkingRef.current && !isSpeakingRef.current) {
-                        handleUserMessage(inp.value);
-                        inp.value = '';
-                      }
-                    }}
-                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-[10px] font-bold uppercase rounded text-white tracking-wider cursor-pointer active:scale-95 shrink-0"
-                  >
-                    Send
-                  </button>
-                </div>
+
               </aside>
             </motion.div>
           )}

@@ -59,7 +59,9 @@ def load_sessions():
                     max_unclear_retries=sdata["max_unclear_retries"],
                     transcript=[tuple(item) for item in sdata["transcript"]],
                     promise_date=sdata.get("promise_date", ""),
-                    callback_time=sdata.get("callback_time", "")
+                    callback_time=sdata.get("callback_time", ""),
+                    engine=sdata.get("engine", "sarvam"),
+                    voice=sdata.get("voice", "male")
                 )
                 sessions[sid] = ctx
         print(f"[SESSION PERSIST] Loaded {len(sessions)} sessions from {SESSIONS_FILE}")
@@ -80,7 +82,9 @@ def save_sessions():
                 "max_unclear_retries": ctx.max_unclear_retries,
                 "transcript": ctx.transcript,
                 "promise_date": ctx.promise_date,
-                "callback_time": ctx.callback_time
+                "callback_time": ctx.callback_time,
+                "engine": getattr(ctx, "engine", "sarvam"),
+                "voice": getattr(ctx, "voice", "male")
             }
         with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -98,6 +102,8 @@ class StartRequest(BaseModel):
     name: str
     amount: int
     bank_name: str = "ICICI"
+    engine: Optional[str] = "sarvam"
+    voice: Optional[str] = "male"
 
 class ReplyRequest(BaseModel):
     session_id: str
@@ -105,6 +111,9 @@ class ReplyRequest(BaseModel):
 
 class TTSRequest(BaseModel):
     text: str
+    session_id: Optional[str] = None
+    engine: Optional[str] = None
+    voice: Optional[str] = None
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -140,7 +149,15 @@ def health():
 @app.post("/api/start")
 def start_conversation(req: StartRequest):
     sid = str(uuid.uuid4())[:8]
-    ctx = CallContext(name=req.name.strip(), amount=req.amount, bank_name=req.bank_name.strip())
+    engine = req.engine.strip().lower() if req.engine else "sarvam"
+    voice = req.voice.strip().lower() if req.voice else "male"
+    ctx = CallContext(
+        name=req.name.strip(),
+        amount=req.amount,
+        bank_name=req.bank_name.strip(),
+        engine=engine,
+        voice=voice
+    )
     sessions[sid] = ctx
     save_sessions()
 
@@ -150,7 +167,7 @@ def start_conversation(req: StartRequest):
 
     # Generate the TTS file
     try:
-        speak_to_file(text, str(AUDIO_DIR / fname))
+        speak_to_file(text, str(AUDIO_DIR / fname), engine=engine, voice=voice)
     except Exception as e:
         print(f"[TTS] Start audio generation failed: {e}")
 
@@ -192,7 +209,12 @@ def reply(req: ReplyRequest):
     # Generate TTS audio file
     fname = f"{sid}_turn_{uuid.uuid4().hex[:6]}.mp3"
     try:
-        speak_to_file(bot_text, str(AUDIO_DIR / fname))
+        speak_to_file(
+            bot_text,
+            str(AUDIO_DIR / fname),
+            engine=getattr(ctx, "engine", "sarvam"),
+            voice=getattr(ctx, "voice", "male")
+        )
     except Exception as e:
         print(f"[TTS] Reply audio generation failed: {e}")
 
@@ -212,10 +234,21 @@ def tts_only(req: TTSRequest):
     if not text:
         raise HTTPException(status_code=400, detail="'text' field is required")
 
+    engine = req.engine
+    voice = req.voice
+    if req.session_id:
+        ctx = sessions.get(req.session_id)
+        if ctx:
+            engine = engine or getattr(ctx, "engine", "sarvam")
+            voice = voice or getattr(ctx, "voice", "male")
+
+    engine = engine or "sarvam"
+    voice = voice or "male"
+
     fname = f"tts_{uuid.uuid4().hex[:8]}.mp3"
     filepath = str(AUDIO_DIR / fname)
     try:
-        speak_to_file(text, filepath)
+        speak_to_file(text, filepath, engine=engine, voice=voice)
         return {"audio_url": f"/audio/{fname}", "bot_text": text}
     except Exception as e:
         print(f"[TTS ENDPOINT] Error synthesizing: {e}")
