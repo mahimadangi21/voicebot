@@ -71,8 +71,10 @@ AFFIRM_WORDS = {
     "bhejdo", "bhej do", "kar do", "bhej de", "bhej dena", "bhejye",
     "sure", "confirm", "speaking", "yep", "correct", "main hi", "bol raha",
     "pay", "dunga", "karunga", "pay kar",
+    "theek hai", "thik hai", "ok kar do", "ok kardo", "okay kar do", "okay kardo",
     # Devanagari Hindi matches
-    "हाँ", "जी", "ठीक", "हां", "हाँजी", "हाँ जी", "भेज दो", "कर दो", "सही"
+    "हाँ", "जी", "ठीक", "हां", "हाँजी", "हाँ जी", "भेज दो", "कर दो", "सही",
+    "बिल्कुल", "बिलकुल", "ठीक है", "ठिक है", "ओके", "ओके कर दो", "ओके करदो", "हांजी", "हां जी"
 }
 
 DENY_WORDS = {
@@ -235,7 +237,13 @@ ALREADY_PAID_PATTERNS = [
 
 PROMISE_TO_PAY_PATTERNS = [
     r"\bkal\b",
-    r"\bsalary\b",
+    r"\bparso\b",
+    r"\bparson\b",
+    r"\baaj\s+shaam\b",
+    r"\bkal\s+subah\b",
+    r"\bkal\s+dopahar\b",
+    r"\bkal\s+shaam\b",
+    r"\bparso\s+subah\b",
     r"\bmonday\b",
     r"\btuesday\b",
     r"\bwednesday\b",
@@ -246,12 +254,27 @@ PROMISE_TO_PAY_PATTERNS = [
     r"\bnext\s+week\b",
     r"\bagle\s+hafte\b",
     r"\bagle\s+week\b",
+    r"\b2\s+din\s+baad\b",
+    r"\b3\s+tareekh\s+ko\b",
+    r"\bmahine\s+ke\s+end\s+mein\b",
+    r"\bsalary\b",
     r"\bshaam\b",
     r"\bghante\s+baad\b",
     r"\btime\s+do\b",
     r"\bdono\b",
+    r"\bkar\s+dunga\b",
+    r"\bpayment\s+kar\s+dunga\b",
+    r"\bpay\s+karunga\b",
+    r"\bjama\s+kar\s+dunga\b",
+    r"\btransfer\s+kar\s+dunga\b",
+    r"\bpay\s+kar\s+dunga\b",
+    r"\bpayment\s+kar\s+dungi\b",
+    r"\bpay\s+karungi\b",
     # Devanagari
     r"कल",
+    r"परसो",
+    r"परसों",
+    r"आज\s*शाम",
     r"सैलरी",
     r"सोमवार",
     r"मंगलवार",
@@ -262,7 +285,11 @@ PROMISE_TO_PAY_PATTERNS = [
     r"रविवार",
     r"अगले\s*हफ्ते",
     r"शाम",
-    r"घंटे\s*बाद"
+    r"घंटे\s*बाद",
+    r"कर\s*दूंगा",
+    r"कर\s*दूंगी",
+    r"जमा",
+    r"पेमेंट"
 ]
 
 FINANCIAL_PROBLEM_PATTERNS = [
@@ -407,9 +434,9 @@ ASK_LINK_PATTERNS = [
 ]
 
 ACKNOWLEDGE_WORDS = {
-    "bataiye", "boliye", "hello", "batao", "bolo", "ji boliye",
+    "bataiye", "boliye", "hello", "batao", "bolo", "ji boliye", "acha", "achha",
     # Devanagari
-    "बताइए", "बोलिए", "हैलो", "हेलो", "बताओ", "बोलो"
+    "बताइए", "बोलिए", "हैलो", "हेलो", "बताओ", "बोलो", "अच्छा", "अच्चा"
 }
 
 OUT_OF_SCOPE_PATTERNS = [
@@ -644,6 +671,43 @@ def is_incomplete_thought(text: str) -> bool:
     return False
 
 
+def extract_callback_time(text: str) -> str | None:
+    """
+    Extracts a specific date or time from the user text if it is present.
+    If no specific time is found, or if it is a generic reply, returns None.
+    """
+    cleaned = text.strip().lower()
+    if not cleaned:
+        return None
+        
+    # Check for explicit generic/non-specific callback replies
+    invalid_words = {
+        "baad mein", "baad me", "baad mai", "theek hai", "thik hai", 
+        "dekhenge", "haan", "han", "hmm", "hmmm", "ok", "okay", 
+        "yes", "no", "nahi", "nahin", "hello", "hi", "busy", "later"
+    }
+    if cleaned in invalid_words:
+        return None
+
+    time_patterns = [
+        r"\d+", # digits
+        r"\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
+        r"\b(ek|do|teen|chaar|paanch|chah|che|saat|aath|nau|das|gyarah|barah)\b",
+        r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b",
+        r"\b(somwar|mangalwar|budhwar|guruwar|veervar|shukrawar|shaniwar|ravivar|som|mangal|budh|guru|shukra|shani|ravi)\b",
+        r"(सोमवार|मंगलवार|बुधवार|गुरुवार|वीरवार|शुक्रवार|शनिवार|रविवार)",
+        r"\b(baje|pm|am|o'clock|oclock)\b",
+        r"(बजे|पीएम|एएम)",
+        r"\b(subah|dopahar|dophar|shaam|sham|raat|kal|parso|parson)\b",
+        r"(सुबह|दोपहर|शाम|रात|कल|परसों)"
+    ]
+    
+    if any(re.search(pat, cleaned) for pat in time_patterns):
+        return text.strip()
+        
+    return None
+
+
 def detect_intent_with_confidence(user_text: str, customer_name: str = None) -> tuple[Intent, float]:
     """
     Detects the intent and returns a confidence score.
@@ -805,6 +869,30 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
             r"bol\s*rahi\s*ho"
         ])
 
+    if is_female:
+        wrong_person_patterns.extend([
+            r"bol\s*raha\s*hoon",
+            r"bol\s*raha\s*hu",
+            r"bol\s*raha\s*ho"
+        ])
+
+    # Name mismatch check
+    if customer_name:
+        expected_parts = [p.lower() for p in customer_name.split()]
+        name_match_patterns = [
+            r"(?:main|मैं)\s+([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:bol|hoon|hu|बोल|हूं|हूँ|bolta|bolti|raha|rahi)(?:\s|$|[.,!?])",
+            r"(?:mera\s+naam|मेरा\s+नाम)\s+([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:hai|है|he)(?:\s|$|[.,!?])",
+            r"([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:bol\s+raha|bol\s+rahi|बोल\s+रहा|बोल\s+रही)(?:\s|$|[.,!?])",
+            r"this\s+is\s+([a-zA-Z]+|[\u0900-\u097F]+)(?:\s|$|[.,!?])",
+            r"([a-zA-Z]+|[\u0900-\u097F]+)\s+speaking(?:\s|$|[.,!?])"
+        ]
+        for pat in name_match_patterns:
+            m = re.search(pat, text)
+            if m:
+                extracted = m.group(1).lower().strip()
+                if extracted and extracted not in expected_parts and extracted not in ["unka", "uska", "apka", "aapka", "kya", "mera", "mai", "main", "bol"]:
+                    return Intent.WRONG_PERSON
+
     for pattern in wrong_person_patterns:
         if re.search(pattern, text):
             return Intent.WRONG_PERSON
@@ -835,9 +923,19 @@ def detect_intent(user_text: str, customer_name: str = None) -> Intent:
             return Intent.PROMISE_TO_PAY
 
     # 9. Check ask amount
-    for pattern in ASK_AMOUNT_PATTERNS:
-        if re.search(pattern, text):
-            return Intent.ASK_AMOUNT
+    # If a deny word is present, we only match if there's also a question word
+    has_deny_word = any((word in text if any(ord(c) > 127 for c in word) else re.search(rf"\b{re.escape(word)}\b", text)) for word in DENY_WORDS)
+    if has_deny_word:
+        question_patterns = [r"kitna", r"kitne", r"kitni", r"how", r"कितना", r"कितने", r"कितनी"]
+        has_question = any(re.search(pat, text) for pat in question_patterns)
+        if has_question:
+            for pattern in ASK_AMOUNT_PATTERNS:
+                if re.search(pattern, text):
+                    return Intent.ASK_AMOUNT
+    else:
+        for pattern in ASK_AMOUNT_PATTERNS:
+            if re.search(pattern, text):
+                return Intent.ASK_AMOUNT
 
     # 10. Check for unclear overrides
     for pattern in UNCLEAR_PATTERNS:
@@ -973,7 +1071,7 @@ def bot_say(ctx: CallContext) -> str:
         text = line_greeting(ctx)
     elif ctx.state == State.GREETING_IDENTITY_ASKED:
         text = (
-            f"Main {ctx.bank_name} Bank se bol raha hoon. Yeh call aapke pending personal loan "
+            f"Main {ctx.bank_name} Bank se bol raha hoon. Yeh call aapke pending personal due amount "
             f"ke payment ke baare mein hai. Kya meri baat {ctx.name} se ho rahi hai?"
         )
     elif ctx.state == State.ASK_JITESH:
@@ -998,10 +1096,7 @@ def bot_say(ctx: CallContext) -> str:
         else:
             text = "Theek hai, main hamare records mein check kar leta hoon. Dhanyavaad."
     elif ctx.state == State.CALL_ENDED_CALLBACK:
-        if ctx.callback_time:
-            text = f"Theek hai, maine convenient time {ctx.callback_time} system mein note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!"
-        else:
-            text = "Theek hai, maine convenient time system mein note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!"
+        text = "Maine aapka convenient callback time note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!"
     elif ctx.state == State.CALL_ENDED_WRONG_NUMBER:
         text = line_wrong_number()
     elif ctx.state == State.CALL_ENDED_REFUSED:
@@ -1044,16 +1139,14 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
     intent, confidence = detect_intent_with_confidence(user_text, ctx.name)
 
     # Global check for callbacks in non-terminal states
-    if intent == Intent.CALLBACK and not is_call_over(ctx):
+    if intent == Intent.CALLBACK and not is_call_over(ctx) and ctx.state != State.ASK_CALLBACK_TIME:
         # Bypassed in GREETING state if user confirms identity in the same turn
         if ctx.state in {State.GREETING, State.GREETING_IDENTITY_ASKED} and any(word in user_text.lower() for word in ["haan", "ha", "ji", "speaking", "main hi", "bol raha"]):
             intent = Intent.AFFIRM
         else:
-            user_text_lower = user_text.lower()
-            time_indicators = ["baje", "pm", "am", "ghante", "hour", "later", "shaam", "baad", "time", "clock"]
-            has_digit = any(c.isdigit() for c in user_text)
-            if has_digit or "baje" in user_text_lower or "shaam ko" in user_text_lower:
-                ctx.callback_time = user_text.strip()
+            extracted_time = extract_callback_time(user_text)
+            if extracted_time:
+                ctx.callback_time = extracted_time
                 ctx.state = State.CALL_ENDED_CALLBACK
             else:
                 ctx.state = State.ASK_CALLBACK_TIME
@@ -1099,7 +1192,7 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
         ctx.unclear_retries = 0  # Reset — this was a real response, not silence
         text = (
             f"Sorry for that, main {ctx.bank_name} Bank se bol raha hoon "
-            f"aapke pending loan ke baare mein. "
+            f"aapke pending due amount ke baare mein. "
             f"Kya ab meri awaaz aapko clearly aa rahi hai?"
         )
         ctx.log("BOT", text)
@@ -1133,7 +1226,7 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
 
     # Global check for out of scope queries in non-terminal states
     if intent == Intent.OUT_OF_SCOPE and not is_call_over(ctx):
-        text = "Maaf kijiye, main ek automated loan recovery assistant hoon. Main sirf aapke pending loan ke baare mein hi bata sakta hoon. Kripya loan payment ke baare mein bataiye."
+        text = "Maaf kijiye, main ek automated due amount recovery assistant hoon. Main sirf aapke pending due amount ke baare mein hi bata sakta hoon. Kripya due amount payment ke baare mein bataiye."
         ctx.log("BOT", text)
         return text
 
@@ -1183,6 +1276,25 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
     if confidence < 0.9 and not is_call_over(ctx):
         return _handle_unclear(ctx, ctx.state)
 
+    # Global PROMISE_TO_PAY check
+    if intent == Intent.PROMISE_TO_PAY and not is_call_over(ctx):
+        user_text_lower = user_text.lower()
+        date_keywords = ["kal", "parso", "parson", "aaj shaam", "kal subah", "kal dopahar", "kal shaam", "parso subah", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
+                         "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "today", "tomorrow", "2 din baad", "3 tareekh ko", "mahine ke end mein"]
+        devanagari_keywords = ["कल", "परसो", "परसों", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"]
+        matched_kw = None
+        for kw in date_keywords + devanagari_keywords:
+            if kw in user_text_lower:
+                matched_kw = kw
+                break
+        if matched_kw:
+            ctx.promise_date = user_text.strip()
+            ctx.state = State.CALL_ENDED_SUCCESS
+        else:
+            ctx.state = State.ASK_PAYMENT_DATE
+        ctx.unclear_retries = 0
+        return bot_say(ctx)
+
     # State machine logic
     if ctx.state == State.GREETING or ctx.state == State.GREETING_IDENTITY_ASKED:
         if intent == Intent.ASK_IDENTITY or intent == Intent.ASK_BANK:
@@ -1205,9 +1317,9 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
             return bot_say(ctx)
         elif intent == Intent.PROMISE_TO_PAY:
             user_text_lower = user_text.lower()
-            date_keywords = ["kal", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
-                             "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "aaj shaam", "today", "tomorrow"]
-            devanagari_keywords = ["कल", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"]
+            date_keywords = ["kal", "parso", "parson", "aaj shaam", "kal subah", "kal dopahar", "kal shaam", "parso subah", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
+                             "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "today", "tomorrow", "2 din baad", "3 tareekh ko", "mahine ke end mein"]
+            devanagari_keywords = ["कल", "परसो", "परसों", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"]
             matched_kw = None
             for kw in date_keywords + devanagari_keywords:
                 if kw in user_text_lower:
@@ -1258,9 +1370,9 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
             return bot_say(ctx)
         elif intent == Intent.PROMISE_TO_PAY:
             user_text_lower = user_text.lower()
-            date_keywords = ["kal", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
-                             "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "aaj shaam", "today", "tomorrow"]
-            devanagari_keywords = ["कल", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"]
+            date_keywords = ["kal", "parso", "parson", "aaj shaam", "kal subah", "kal dopahar", "kal shaam", "parso subah", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
+                             "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "today", "tomorrow", "2 din baad", "3 tareekh ko", "mahine ke end mein"]
+            devanagari_keywords = ["कल", "परसो", "परसों", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"]
             matched_kw = None
             for kw in date_keywords + devanagari_keywords:
                 if kw in user_text_lower:
@@ -1317,10 +1429,15 @@ def process_user_reply(ctx: CallContext, user_text: str) -> str:
         return bot_say(ctx)
 
     elif ctx.state == State.ASK_CALLBACK_TIME:
-        ctx.callback_time = user_text.strip()
-        ctx.state = State.CALL_ENDED_CALLBACK
-        ctx.unclear_retries = 0
-        return bot_say(ctx)
+        extracted_time = extract_callback_time(user_text)
+        if extracted_time:
+            ctx.callback_time = extracted_time
+            ctx.state = State.CALL_ENDED_CALLBACK
+            ctx.unclear_retries = 0
+            return bot_say(ctx)
+        else:
+            # politely ask again, do not update state/variables
+            return "Theek hai. Aapko kis samay call karna zyada convenient rahega?"
 
     elif ctx.state == State.DUE_DATE:
         if intent == Intent.AFFIRM or intent == Intent.ACKNOWLEDGE or intent == Intent.ASK_LINK:

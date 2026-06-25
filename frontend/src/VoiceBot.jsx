@@ -72,7 +72,9 @@ const AFFIRM_WORDS = [
   "bhejdo", "bhej do", "kar do", "bhej de", "bhej dena", "bhejye",
   "sure", "confirm", "speaking", "yep", "correct", "main hi", "bol raha",
   "pay", "dunga", "karunga", "pay kar",
-  "हाँ", "जी", "ठीक", "हां", "हाँजी", "हाँ जी", "भेज दो", "कर दो", "सही"
+  "theek hai", "thik hai", "ok kar do", "ok kardo", "okay kar do", "okay kardo",
+  "हाँ", "जी", "ठीक", "हां", "हाँजी", "हाँ जी", "भेज दो", "कर दो", "सही",
+  "बिल्कुल", "बिलकुल", "ठीक है", "ठिक है", "ओके", "ओके कर दो", "ओके करदो", "हांजी", "हां जी"
 ];
 
 const DENY_WORDS = [
@@ -330,7 +332,13 @@ const ASK_LINK_PATTERNS = [
 
 const PROMISE_TO_PAY_PATTERNS = [
   /\bkal\b/i,
-  /\bsalary\b/i,
+  /\bparso\b/i,
+  /\bparson\b/i,
+  /\baaj\s+shaam\b/i,
+  /\bkal\s+subah\b/i,
+  /\bkal\s+dopahar\b/i,
+  /\bkal\s+shaam\b/i,
+  /\bparso\s+subah\b/i,
   /\bmonday\b/i,
   /\btuesday\b/i,
   /\bwednesday\b/i,
@@ -341,11 +349,26 @@ const PROMISE_TO_PAY_PATTERNS = [
   /\bnext\s+week\b/i,
   /\bagle\s+hafte\b/i,
   /\bagle\s+week\b/i,
+  /\b2\s+din\s+baad\b/i,
+  /\b3\s+tareekh\s+ko\b/i,
+  /\bmahine\s+ke\s+end\s+mein\b/i,
+  /\bsalary\b/i,
   /\bshaam\b/i,
   /\bghante\s+baad\b/i,
   /\btime\s+do\b/i,
   /\bdono\b/i,
+  /\bkar\s+dunga\b/i,
+  /\bpayment\s+kar\s+dunga\b/i,
+  /\bpay\s+karunga\b/i,
+  /\bjama\s+kar\s+dunga\b/i,
+  /\btransfer\s+kar\s+dunga\b/i,
+  /\bpay\s+kar\s+dunga\b/i,
+  /\bpayment\s+kar\s+dungi\b/i,
+  /\bpay\s+karungi\b/i,
   /कल/i,
+  /परसो/i,
+  /परसों/i,
+  /आज\s*शाम/i,
   /सैलरी/i,
   /सोमवार/i,
   /मंगलवार/i,
@@ -356,7 +379,11 @@ const PROMISE_TO_PAY_PATTERNS = [
   /रविवार/i,
   /अगले\s*हफ्ते/i,
   /शाम/i,
-  /घंटे\s*बाद/i
+  /घंटे\s*बाद/i,
+  /कर\s*दूंगा/i,
+  /कर\s*दूंगी/i,
+  /जमा/i,
+  /पेमेंट/i
 ];
 
 const FINANCIAL_PROBLEM_PATTERNS = [
@@ -378,8 +405,8 @@ const FINANCIAL_PROBLEM_PATTERNS = [
 ];
 
 const ACKNOWLEDGE_WORDS = [
-  "bataiye", "boliye", "hello", "batao", "bolo", "ji boliye",
-  "बताइए", "बोलिए", "हैलो", "हेलो", "बताओ", "बोलो"
+  "bataiye", "boliye", "hello", "batao", "bolo", "ji boliye", "acha", "achha",
+  "बताइए", "बोलिए", "हैलो", "हेलो", "बताओ", "बोलो", "अच्छा", "अच्चा"
 ];
 
 const OUT_OF_SCOPE_PATTERNS = [
@@ -567,6 +594,35 @@ const UNCLEAR_PATTERNS = [
   /क्या\s*कहा/i
 ];
 
+const extractCallbackTime = (text) => {
+  const clean = (text || '').trim().toLowerCase();
+  if (!clean) return null;
+
+  const invalidWords = ["baad mein", "baad me", "baad mai", "theek hai", "thik hai", "dekhenge", "haan", "han", "hmm", "hmmm", "ok", "okay", "yes", "no", "nahi", "nahin", "hello", "hi", "busy", "later"];
+  if (invalidWords.includes(clean)) {
+    return null;
+  }
+
+  const timePatterns = [
+    /\d+/,
+    /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/,
+    /\b(ek|do|teen|chaar|paanch|chah|che|saat|aath|nau|das|gyarah|barah)\b/,
+    /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/,
+    /\b(somwar|mangalwar|budhwar|guruwar|veervar|shukrawar|shaniwar|ravivar|som|mangal|budh|guru|shukra|shani|ravi)\b/,
+    /(सोमवार|मंगलवार|बुधवार|गुरुवार|वीरवार|शुक्रवार|शनिवार|रविवार)/,
+    /\b(baje|pm|am|o'clock|oclock)\b/,
+    /(बजे|पीएम|एएम)/,
+    /\b(subah|dopahar|dophar|shaam|sham|raat|kal|parso|parson)\b/,
+    /(सुबह|दोपहर|शाम|रात|कल|परसों)/
+  ];
+
+  if (timePatterns.some(pat => pat.test(clean))) {
+    return text.trim();
+  }
+
+  return null;
+};
+
 const detectIntent = (text, customerName = null) => {
   const clean = text.toLowerCase().trim();
 
@@ -661,6 +717,26 @@ const detectIntent = (text, customerName = null) => {
     if (nameLower.includes("mahima")) {
       hasMahima = true;
     }
+
+    // Name mismatch check
+    const expectedParts = nameLower.split(/\s+/).map(p => p.trim()).filter(Boolean);
+    const nameMatchPatterns = [
+      /(?:main|मैं)\s+([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:bol|hoon|hu|बोल|हूं|हूँ|bolta|bolti|raha|rahi)(?:\s|$|[.,!?])/i,
+      /(?:mera\s+naam|मेरा\s+नाम)\s+([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:hai|है|he)(?:\s|$|[.,!?])/i,
+      /([a-zA-Z]+|[\u0900-\u097F]+)\s+(?:bol\s+raha|bol\s+rahi|बोल\s+रहा|बोल\s+रही)(?:\s|$|[.,!?])/i,
+      /this\s+is\s+([a-zA-Z]+|[\u0900-\u097F]+)(?:\s|$|[.,!?])/i,
+      /([a-zA-Z]+|[\u0900-\u097F]+)\s+speaking(?:\s|$|[.,!?])/i
+    ];
+    for (const pat of nameMatchPatterns) {
+      const m = pat.exec(clean);
+      if (m) {
+        const extracted = m[1].toLowerCase().trim();
+        const ignoreList = ["unka", "uska", "apka", "aapka", "kya", "mera", "mai", "main", "bol"];
+        if (extracted && !expectedParts.includes(extracted) && !ignoreList.includes(extracted)) {
+          return 'WRONG_PERSON';
+        }
+      }
+    }
   }
 
   const wrongPersonPatterns = [
@@ -743,8 +819,29 @@ const detectIntent = (text, customerName = null) => {
   }
   
   // 9. Check ask amount
-  for (const pat of ASK_AMOUNT_PATTERNS) {
-    if (pat.test(clean)) return 'ASK_AMOUNT';
+  // If a deny word is present, we only match if there's also a question word
+  let hasDenyWord = false;
+  for (const word of DENY_WORDS) {
+    if (word.includes(' ') || /[\u0900-\u097F]/.test(word)) {
+      if (clean.includes(word)) { hasDenyWord = true; break; }
+    } else {
+      const regex = new RegExp(`\\b${word}\\b`, 'i');
+      if (regex.test(clean)) { hasDenyWord = true; break; }
+    }
+  }
+
+  if (hasDenyWord) {
+    const questionPatterns = [/kitna/i, /kitne/i, /kitni/i, /how/i, /कितना/i, /कितने/i, /कितनी/i];
+    const hasQuestion = questionPatterns.some(pat => pat.test(clean));
+    if (hasQuestion) {
+      for (const pat of ASK_AMOUNT_PATTERNS) {
+        if (pat.test(clean)) return 'ASK_AMOUNT';
+      }
+    }
+  } else {
+    for (const pat of ASK_AMOUNT_PATTERNS) {
+      if (pat.test(clean)) return 'ASK_AMOUNT';
+    }
   }
   
   // 10. Check unclear override
@@ -853,7 +950,7 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   if (intent === 'AUDIO_CHECK' && !terminalStates.includes(currentState)) {
     if (unclearRetriesRef) unclearRetriesRef.current = 0; // Reset — this is NOT a silence
     return {
-      bot_text: `Sorry for that, main ${bankName} Bank se bol raha hoon aapke pending loan ke baare mein. Kya ab meri awaaz aapko clearly aa rahi hai?`,
+      bot_text: `Sorry for that, main ${bankName} Bank se bol raha hoon aapke pending due amount ke baare mein. Kya ab meri awaaz aapko clearly aa rahi hai?`,
       state: currentState, // stay in same state — re-confirm audio then continue
       is_terminal: false,
       intent: 'AUDIO_CHECK',
@@ -912,7 +1009,7 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   // Global check for out of scope queries in non-terminal states
   if (intent === 'OUT_OF_SCOPE' && !terminalStates.includes(currentState)) {
     return {
-      bot_text: "Maaf kijiye, main ek automated loan recovery assistant hoon. Main sirf aapke pending loan ke baare mein hi bata sakta hoon. Kripya loan payment ke baare mein bataiye.",
+      bot_text: "Maaf kijiye, main ek automated due amount recovery assistant hoon. Main sirf aapke pending due amount ke baare mein hi bata sakta hoon. Kripya due amount payment ke baare mein bataiye.",
       state: currentState,
       is_terminal: false,
       intent: intent,
@@ -980,18 +1077,44 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
     };
   }
 
+  // Global check for promise to pay in non-terminal states
+  if (intent === 'PROMISE_TO_PAY' && !terminalStates.includes(currentState)) {
+    if (unclearRetriesRef) unclearRetriesRef.current = 0;
+    const userTextLower = userText.toLowerCase();
+    const dateKeywords = ["kal", "parso", "parson", "aaj shaam", "kal subah", "kal dopahar", "kal shaam", "parso subah", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
+                          "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "today", "tomorrow", "2 din baad", "3 tareekh ko", "mahine ke end mein"];
+    const devanagariKeywords = ["कल", "परसो", "परसों", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"];
+    const hasDateWord = dateKeywords.some(kw => userTextLower.includes(kw)) || devanagariKeywords.some(kw => userText.includes(kw));
+    if (hasDateWord) {
+      return {
+        bot_text: `Theek hai, maine payment ki date ${userText} system mein register kar li hai. Kripya tab tak payment kar dijiyega. Dhanyavaad!`,
+        state: 'CALL_ENDED_SUCCESS',
+        is_terminal: true,
+        intent: intent,
+        emotion: 'Cooperative'
+      };
+    } else {
+      return {
+        bot_text: 'Aap kis date ko pay karenge? Taaki main system mein note kar sakoon.',
+        state: 'ASK_PAYMENT_DATE',
+        is_terminal: false,
+        intent: intent,
+        emotion: 'Inquisitive'
+      };
+    }
+  }
+
   // Global check for callbacks in non-terminal states
-  if (intent === 'CALLBACK') {
+  if (intent === 'CALLBACK' && currentState !== 'ASK_CALLBACK_TIME') {
     const isGreeting = currentState === 'GREETING' || currentState === 'GREETING_IDENTITY_ASKED';
     const hasAffirmWord = ["haan", "ha", "ji", "speaking", "main hi", "bol raha"].some(word => userText.toLowerCase().includes(word));
     if (isGreeting && hasAffirmWord) {
       intent = 'AFFIRM';
     } else {
-      const clean = userText.toLowerCase().trim();
-      const hasDigit = /\d/.test(clean);
-      if (hasDigit || clean.includes("baje") || clean.includes("shaam ko")) {
+      const extractedTime = extractCallbackTime(userText);
+      if (extractedTime) {
         return {
-          bot_text: `Theek hai, maine convenient time ${userText} system mein note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!`,
+          bot_text: "Maine aapka convenient callback time note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!",
           state: 'CALL_ENDED_CALLBACK',
           is_terminal: true,
           intent: intent,
@@ -1102,7 +1225,7 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   if (currentState === 'GREETING' || currentState === 'GREETING_IDENTITY_ASKED') {
     if (intent === 'ASK_IDENTITY' || intent === 'ASK_BANK') {
       return {
-        bot_text: `Main ${bankName} Bank se bol raha hoon. Yeh call aapke pending personal loan ke payment ke baare mein hai. Kya meri baat ${customerName} se ho rahi hai?`,
+        bot_text: `Main ${bankName} Bank se bol raha hoon. Yeh call aapke pending personal due amount ke payment ke baare mein hai. Kya meri baat ${customerName} se ho rahi hai?`,
         state: 'GREETING_IDENTITY_ASKED',
         is_terminal: false,
         intent: intent,
@@ -1118,9 +1241,9 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
       };
     } else if (intent === 'PROMISE_TO_PAY') {
       const userTextLower = userText.toLowerCase();
-      const dateKeywords = ["kal", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
-                            "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "aaj shaam", "today", "tomorrow"];
-      const devanagariKeywords = ["कल", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"];
+      const dateKeywords = ["kal", "parso", "parson", "aaj shaam", "kal subah", "kal dopahar", "kal shaam", "parso subah", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
+                            "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "today", "tomorrow", "2 din baad", "3 tareekh ko", "mahine ke end mein"];
+      const devanagariKeywords = ["कल", "परसो", "परसों", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"];
       const hasDateWord = dateKeywords.some(kw => userTextLower.includes(kw)) || devanagariKeywords.some(kw => userText.includes(kw));
       if (hasDateWord) {
         return {
@@ -1177,7 +1300,7 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
       };
     } else if (intent === 'DENY' || intent === 'WRONG_PERSON') {
       return {
-        bot_text: 'Theek hai, main baad mein call karta hoon. Dhanyavaad.',
+        bot_text: "Oh sorry, lagta hai mujhe wrong number mil gaya. Maaf kijiye, dhanyavaad.",
         state: 'CALL_ENDED_WRONG_NUMBER',
         is_terminal: true,
         intent: intent,
@@ -1221,9 +1344,9 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
       };
     } else if (intent === 'PROMISE_TO_PAY') {
       const userTextLower = userText.toLowerCase();
-      const dateKeywords = ["kal", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
-                            "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "aaj shaam", "today", "tomorrow"];
-      const devanagariKeywords = ["कल", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"];
+      const dateKeywords = ["kal", "parso", "parson", "aaj shaam", "kal subah", "kal dopahar", "kal shaam", "parso subah", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", 
+                            "next week", "agle hafte", "agle week", "shaam", "ghante baad", "baje", "today", "tomorrow", "2 din baad", "3 tareekh ko", "mahine ke end mein"];
+      const devanagariKeywords = ["कल", "परसो", "परसों", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार", "रविवार", "हफ्ते", "शाम", "घंटे"];
       const hasDateWord = dateKeywords.some(kw => userTextLower.includes(kw)) || devanagariKeywords.some(kw => userText.includes(kw));
       if (hasDateWord) {
         return {
@@ -1336,13 +1459,24 @@ const simulateMockReply = (userText, currentState, customerName, amount, bankNam
   }
 
   if (currentState === 'ASK_CALLBACK_TIME') {
-    return {
-      bot_text: `Theek hai, maine convenient time ${userText} system mein note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!`,
-      state: 'CALL_ENDED_CALLBACK',
-      is_terminal: true,
-      intent: intent,
-      emotion: 'Cooperative'
-    };
+    const extractedTime = extractCallbackTime(userText);
+    if (extractedTime) {
+      return {
+        bot_text: "Maine aapka convenient callback time note kar liya hai. Hum aapko tabhi call karenge. Dhanyavaad!",
+        state: 'CALL_ENDED_CALLBACK',
+        is_terminal: true,
+        intent: intent,
+        emotion: 'Cooperative'
+      };
+    } else {
+      return {
+        bot_text: "Theek hai. Aapko kis samay call karna zyada convenient rahega?",
+        state: 'ASK_CALLBACK_TIME',
+        is_terminal: false,
+        intent: intent,
+        emotion: 'Inquisitive'
+      };
+    }
   }
 
   if (currentState === 'ALREADY_PAID') {
@@ -1489,29 +1623,29 @@ const validateAmount = (amountStr) => {
   const trimmed = amountStr ? String(amountStr).trim() : "";
   
   if (!trimmed) {
-    return "Loan amount cannot be empty.";
+    return "Due amount cannot be empty.";
   }
   
   const num = Number(trimmed);
   if (isNaN(num)) {
-    return "Loan amount must be a valid number.";
+    return "Due amount must be a valid number.";
   }
   
   if (num < 0) {
-    return "Loan amount cannot be negative.";
+    return "Due amount cannot be negative.";
   }
   
   if (num === 0) {
-    return "Loan amount must be greater than 0.";
+    return "Due amount must be greater than 0.";
   }
   
   // Check if it's a decimal (contains fractional part)
   if (!Number.isInteger(num)) {
-    return "Loan amount must be a whole number (decimals are not supported).";
+    return "Due amount must be a whole number (decimals are not supported).";
   }
   
   if (num > 50000000) {
-    return "Loan amount cannot exceed ₹50,000,000.";
+    return "Due amount cannot exceed ₹50,000,000.";
   }
   
   return null;
@@ -1623,7 +1757,7 @@ export default function VoiceBot() {
   const [amount, setAmount] = useState('5000');
   const [bankName, setBankName] = useState('ICICI');
   const [phone, setPhone] = useState('+91 98765 43210');
-  const [loanId, setLoanId] = useState('LN-9830219');
+  const [dueId, setDueId] = useState('LN-9830219');
   const [dueDate, setDueDate] = useState('June 15, 2026');
   const [nameError, setNameError] = useState(null);
   const [amountError, setAmountError] = useState(null);
@@ -2846,27 +2980,27 @@ export default function VoiceBot() {
       outcome = 'Payment Link Dispatched';
       promiseToPay = 'Yes';
       sentiment = 'Positive / Cooperative';
-      summaryText = `${customerName} agreed to pay the outstanding loan balance of ₹${parseFloat(amount).toLocaleString()} for ${bankName} immediately. A secure payment link has been dispatched to their registered mobile number.`;
+      summaryText = `${customerName} agreed to pay the outstanding due amount balance of ₹${parseFloat(amount).toLocaleString()} for ${bankName} immediately. A secure payment link has been dispatched to their registered mobile number.`;
     } else if (finalState === 'CALL_ENDED_SUCCESS') {
       outcome = 'Promise to Pay (PTP) Secured';
       promiseToPay = 'Yes';
       sentiment = 'Positive / Cooperative';
-      summaryText = `${customerName} promised to pay the outstanding loan balance of ₹${parseFloat(amount).toLocaleString()} for ${bankName}. This payment commitment has been recorded in the collection ledger.`;
+      summaryText = `${customerName} promised to pay the outstanding due amount balance of ₹${parseFloat(amount).toLocaleString()} for ${bankName}. This payment commitment has been recorded in the collection ledger.`;
     } else if (finalState === 'CALL_ENDED_REFUSED') {
       outcome = 'Payment Refused';
       promiseToPay = 'No';
       sentiment = 'Defensive';
-      summaryText = `${customerName} acknowledged the outstanding loan of ₹${parseFloat(amount).toLocaleString()} for ${bankName} but refused to make a payment commitment during this interaction. Requires immediate escalation.`;
+      summaryText = `${customerName} acknowledged the outstanding due amount of ₹${parseFloat(amount).toLocaleString()} for ${bankName} but refused to make a payment commitment during this interaction. Requires immediate escalation.`;
     } else if (finalState === 'CALL_ENDED_WRONG_NUMBER') {
       outcome = 'Wrong Contact Information';
       promiseToPay = 'No';
       sentiment = 'Neutral';
-      summaryText = `The recipient indicated that the contact details for the ${bankName} account with loan amount ₹${parseFloat(amount).toLocaleString()} are incorrect, and they are not ${customerName}.`;
+      summaryText = `The recipient indicated that the contact details for the ${bankName} account with due amount amount ₹${parseFloat(amount).toLocaleString()} are incorrect, and they are not ${customerName}.`;
     } else if (finalState === 'CALL_ENDED_UNCLEAR') {
       outcome = 'Customer Unreachable';
       promiseToPay = 'Pending';
       sentiment = 'Neutral';
-      summaryText = `The call with ${customerName} regarding the outstanding loan of ₹${parseFloat(amount).toLocaleString()} for ${bankName} was terminated as the customer's responses were unclear or they asked to be contacted later.`;
+      summaryText = `The call with ${customerName} regarding the outstanding due amount of ₹${parseFloat(amount).toLocaleString()} for ${bankName} was terminated as the customer's responses were unclear or they asked to be contacted later.`;
     } else if (finalState === 'CALL_ENDED_FINANCIAL') {
       outcome = 'Financial Hardship Recorded';
       promiseToPay = 'No';
@@ -2881,22 +3015,22 @@ export default function VoiceBot() {
       outcome = 'Escalated to Human Agent';
       promiseToPay = 'No';
       sentiment = 'Cooperative';
-      summaryText = `${customerName} requested to speak with a human agent or manager regarding the outstanding loan of ₹${parseFloat(amount).toLocaleString()} for ${bankName}. The call has been transferred to a live customer representative.`;
+      summaryText = `${customerName} requested to speak with a human agent or manager regarding the outstanding due amount of ₹${parseFloat(amount).toLocaleString()} for ${bankName}. The call has been transferred to a live customer representative.`;
     } else if (finalState === 'CALL_FAILED') {
       outcome = 'Call Failed / Connection Lost';
       promiseToPay = 'Unknown';
       sentiment = 'N/A';
-      summaryText = `The call attempt regarding the ${bankName} loan of ₹${parseFloat(amount).toLocaleString()} for ${customerName} failed due to a network connection loss.`;
+      summaryText = `The call attempt regarding the ${bankName} due amount of ₹${parseFloat(amount).toLocaleString()} for ${customerName} failed due to a network connection loss.`;
     } else {
       outcome = 'Customer Unreachable';
       promiseToPay = 'Unknown';
       sentiment = 'Neutral';
-      summaryText = `The call with ${customerName} regarding the outstanding loan of ₹${parseFloat(amount).toLocaleString()} for ${bankName} ended abruptly.`;
+      summaryText = `The call with ${customerName} regarding the outstanding due amount of ₹${parseFloat(amount).toLocaleString()} for ${bankName} ended abruptly.`;
     }
 
     // Override summary text if the conversation is empty (LOG-008)
     if (isEmptyCall) {
-      summaryText = `The call attempt to ${customerName} regarding the outstanding loan of ₹${parseFloat(amount).toLocaleString()} for ${bankName} was initiated but ended immediately without customer engagement.`;
+      summaryText = `The call attempt to ${customerName} regarding the outstanding due amount of ₹${parseFloat(amount).toLocaleString()} for ${bankName} was initiated but ended immediately without customer engagement.`;
     }
 
     setCallSummary({
@@ -3001,7 +3135,7 @@ export default function VoiceBot() {
       const dataObj = {
         customerName,
         phone,
-        loanId,
+        dueId,
         dueDate,
         amount,
         bankName,
@@ -3028,7 +3162,7 @@ export default function VoiceBot() {
       txtContent += `===================\n\n`;
       txtContent += `Customer Name: ${customerName}\n`;
       txtContent += `Phone Number: ${phone}\n`;
-      txtContent += `Loan ID: ${loanId}\n`;
+      txtContent += `Due ID: ${dueId}\n`;
       txtContent += `Due Date: ${dueDate}\n`;
       txtContent += `Outstanding Balance: INR ${parseFloat(amount).toLocaleString()}\n`;
       txtContent += `Bank Name: ${bankName}\n\n`;
@@ -3078,13 +3212,13 @@ export default function VoiceBot() {
         // Customer Details Section
         doc.setFontSize(12);
         doc.setTextColor(79, 70, 229); // Indigo-600
-        doc.text("Customer & Loan Details", 20, 40);
+        doc.text("Customer & Due Amount Details", 20, 40);
         
         doc.setFontSize(10);
         doc.setTextColor(51, 65, 85); // Slate-700
         doc.text(`Customer Name: ${customerName}`, 20, 48);
         doc.text(`Phone Number: ${phone}`, 20, 54);
-        doc.text(`Loan ID: ${loanId}`, 20, 60);
+        doc.text(`Due ID: ${dueId}`, 20, 60);
         doc.text(`Due Date: ${dueDate}`, 110, 48);
         doc.text(`Outstanding Balance: INR ${parseFloat(amount).toLocaleString()}`, 110, 54);
         doc.text(`Bank Name: ${bankName}`, 110, 60);
@@ -3358,7 +3492,7 @@ export default function VoiceBot() {
                       <label className={`block text-[9px] font-bold uppercase tracking-widest mb-1 ml-1 transition-colors ${
                         isDarkMode ? 'text-slate-400' : 'text-slate-500'
                       }`}>
-                        Loan Balance (INR)
+                        Due Amount (INR)
                       </label>
                       <input
                         type="text"
@@ -4167,3 +4301,6 @@ export default function VoiceBot() {
     </div>
   );
 }
+ 
+
+

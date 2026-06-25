@@ -215,7 +215,7 @@ HINGLISH_TO_DEVANAGARI = {
     "call": "कॉल",
     "pending": "पेंडिंग",
     "personal": "पर्सनल",
-    "loan": "लोन",
+    "due amount": "लोन",
     "ke": "के",
     "baare": "बारे",
     "achha": "अच्छा",
